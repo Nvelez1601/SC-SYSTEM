@@ -68,7 +68,6 @@ function DashboardHome({ user }) {
     totalUsers: 0,
     totalAdmins: 0,
     totalReviewers: 0,
-    totalStudents: 0,
   });
 
   useEffect(() => {
@@ -84,7 +83,6 @@ function DashboardHome({ user }) {
           totalUsers: users.length,
           totalAdmins: users.filter(u => u.role === 'admin').length,
           totalReviewers: users.filter(u => u.role === 'reviewer').length,
-          totalStudents: users.filter(u => u.role === 'student').length,
         });
       }
     } catch (error) {
@@ -96,11 +94,10 @@ function DashboardHome({ user }) {
     <div className="p-8">
       <h1 className="text-3xl font-bold text-gray-800 mb-8">Dashboard</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         <StatCard title="Total Users" value={stats.totalUsers} color="blue" />
         <StatCard title="Administrators" value={stats.totalAdmins} color="green" />
         <StatCard title="Reviewers" value={stats.totalReviewers} color="purple" />
-        <StatCard title="Students" value={stats.totalStudents} color="orange" />
       </div>
 
       <div className="bg-white rounded-lg shadow p-6">

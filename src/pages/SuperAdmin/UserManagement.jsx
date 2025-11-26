@@ -222,7 +222,6 @@ function CreateUserModal({ onClose, onCreate }) {
             >
               <option value="admin">Administrator</option>
               <option value="reviewer">Reviewer</option>
-              <option value="student">Student</option>
             </select>
           </div>
 
