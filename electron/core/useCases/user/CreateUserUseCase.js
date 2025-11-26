@@ -1,7 +1,7 @@
-const DatabaseConnection = require('../../database/connection');
-const UserRepository = require('../../database/repositories/UserRepository');
+const DatabaseConnection = require('../../../database/connection');
+const UserRepository = require('../../../database/repositories/UserRepository');
 const bcrypt = require('bcryptjs');
-const config = require('../../config/database');
+const config = require('../../../config/database');
 
 class CreateUserUseCase {
   constructor() {

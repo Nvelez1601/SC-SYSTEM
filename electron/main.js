@@ -1,4 +1,17 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
+
+// Detect WSL or explicit disable flag and turn off GPU acceleration early
+const isWSL = !!process.env.WSL_DISTRO_NAME || !!process.env.WSL_INTEROP;
+if (isWSL || process.env.DISABLE_GPU === '1' || process.env.ELECTRON_DISABLE_GPU === '1') {
+  try {
+    app.disableHardwareAcceleration();
+    app.commandLine.appendSwitch('disable-gpu');
+    app.commandLine.appendSwitch('disable-gpu-compositing');
+    console.log('[main] GPU acceleration disabled (WSL or DISABLE_GPU detected)');
+  } catch (e) {
+    console.warn('[main] Failed to disable GPU acceleration:', e && e.message);
+  }
+}
 const path = require('path');
 const DatabaseConnection = require('./database/connection');
 const setupIpcHandlers = require('./ipc/handlers');

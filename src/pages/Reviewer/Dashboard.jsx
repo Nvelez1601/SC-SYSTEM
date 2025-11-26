@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Routes, Route, Link, useNavigate } from 'react-router-dom';
+import ProjectsPage from '../Projects/Projects';
+import DashboardLayout from '../../components/DashboardLayout';
 
 function DeliveryCard({ d, onApprove, onReject }) {
   return (
@@ -20,7 +22,7 @@ function DeliveryCard({ d, onApprove, onReject }) {
   );
 }
 
-export default function ReviewerDashboard({ user }) {
+export function ReviewerHome({ user, onLogout }) {
   const [deliveries, setDeliveries] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -50,7 +52,6 @@ export default function ReviewerDashboard({ user }) {
 
   const handleApprove = async (deliveryId) => {
     try {
-      // Prefer passed user prop, otherwise request current user from main process
       let reviewerId = user && user._id;
       if (!reviewerId) {
         try {
@@ -92,10 +93,22 @@ export default function ReviewerDashboard({ user }) {
         <div>
           <button
             onClick={async () => {
-              if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.logout) {
-                await window.electronAPI.logout();
+              // Prefer App-level logout handler if provided
+              if (typeof onLogout === 'function') {
+                try {
+                  await onLogout();
+                } catch (e) {
+                  console.error('onLogout failed, falling back to direct logout', e);
+                  if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.logout) {
+                    await window.electronAPI.logout();
+                  }
+                }
+              } else {
+                if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.logout) {
+                  await window.electronAPI.logout();
+                }
+                navigate('/login');
               }
-              navigate('/login');
             }}
             className="px-3 py-1 bg-red-600 text-white rounded"
           >
@@ -118,5 +131,39 @@ export default function ReviewerDashboard({ user }) {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ReviewerDashboard({ user, onLogout }) {
+  const links = [
+    { to: '', label: 'Dashboard' },
+    { to: 'projects', label: 'Projects' },
+  ];
+
+  const logoutHandler = async () => {
+    // prefer App-level logout handler so App state is cleared
+    if (typeof onLogout === 'function') {
+      try {
+        await onLogout();
+      } catch (e) {
+        console.error('onLogout failed, falling back to direct logout', e);
+        if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.logout) {
+          await window.electronAPI.logout();
+        }
+      }
+    } else {
+      if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.logout) {
+        await window.electronAPI.logout();
+      }
+    }
+  };
+
+  return (
+    <DashboardLayout user={user} title="Reviewer" links={links} onLogout={logoutHandler}>
+      <Routes>
+        <Route path="" element={<ReviewerHome user={user} onLogout={onLogout} />} />
+        <Route path="projects" element={<ProjectsPage user={user} onLogout={logoutHandler} />} />
+      </Routes>
+    </DashboardLayout>
   );
 }

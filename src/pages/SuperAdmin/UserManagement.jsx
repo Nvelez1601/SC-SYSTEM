@@ -4,6 +4,7 @@ function UserManagement() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -115,7 +116,7 @@ function UserManagement() {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {users.map((user) => (
-                <tr key={user._id}>
+                <tr key={user._id} className="cursor-pointer hover:bg-gray-50" onClick={() => setSelectedUser(user)}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{user.username}</div>
                   </td>
@@ -135,7 +136,7 @@ function UserManagement() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     {user.role !== 'super_admin' && (
                       <button
-                        onClick={() => handleDeleteUser(user._id)}
+                        onClick={(e) => { e.stopPropagation(); handleDeleteUser(user._id); }}
                         className="text-red-600 hover:text-red-900"
                       >
                         Delete
@@ -153,6 +154,42 @@ function UserManagement() {
         <CreateUserModal
           onClose={() => setShowCreateModal(false)}
           onCreate={handleCreateUser}
+        />
+      )}
+
+      {selectedUser && (
+        <EditUserModal
+          user={selectedUser}
+          onClose={() => setSelectedUser(null)}
+          onUpdate={async (updated) => {
+            try {
+              console.log('[UserManagement] updating user', updated._id, updated);
+              const res = await window.electronAPI.updateUser(updated._id, updated);
+              if (res && res.success) {
+                setSelectedUser(null);
+                loadUsers();
+              } else {
+                alert(res.error || 'Failed to update user');
+              }
+            } catch (err) {
+              console.error('Update user error', err);
+              alert('Unexpected error updating user');
+            }
+          }}
+          onDelete={async (id) => {
+            try {
+              const res = await window.electronAPI.deleteUser(id);
+              if (res && res.success) {
+                setSelectedUser(null);
+                loadUsers();
+              } else {
+                alert(res.error || 'Failed to delete user');
+              }
+            } catch (err) {
+              console.error('Delete user error', err);
+              alert('Unexpected error deleting user');
+            }
+          }}
         />
       )}
     </div>
@@ -259,6 +296,52 @@ function CreateUserModal({ onClose, onCreate }) {
             >
               Create User
             </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function EditUserModal({ user, onClose, onUpdate, onDelete }) {
+  const [formData, setFormData] = useState({ ...user });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onUpdate(formData);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+        <h2 className="text-2xl font-bold text-gray-800 mb-4">Edit User</h2>
+        <form onSubmit={handleSubmit}>
+          <div className="mb-3">
+            <label className="block text-sm mb-1">Username</label>
+            <input value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className="w-full border p-2 rounded" />
+          </div>
+          <div className="mb-3">
+            <label className="block text-sm mb-1">Email</label>
+            <input value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full border p-2 rounded" />
+          </div>
+          <div className="mb-3">
+            <label className="block text-sm mb-1">Role</label>
+            <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full border p-2 rounded">
+              <option value="admin">Administrator</option>
+              <option value="reviewer">Reviewer</option>
+            </select>
+          </div>
+          <div className="mb-4">
+            <label className="block text-sm mb-1">Active</label>
+            <select value={formData.active ? 'active' : 'inactive'} onChange={e => setFormData({...formData, active: e.target.value === 'active'})} className="w-full border p-2 rounded">
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => onDelete(user._id)} className="px-4 py-2 border rounded text-red-600">Delete</button>
+            <button type="button" onClick={onClose} className="px-4 py-2 border rounded">Cancel</button>
+            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">Save</button>
           </div>
         </form>
       </div>

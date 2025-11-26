@@ -1,5 +1,5 @@
-const DatabaseConnection = require('../../database/connection');
-const UserRepository = require('../../database/repositories/UserRepository');
+const DatabaseConnection = require('../../../database/connection');
+const UserRepository = require('../../../database/repositories/UserRepository');
 
 class GetAllUsersUseCase {
   constructor() {

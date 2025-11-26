@@ -72,16 +72,8 @@ function App() {
             )
           }
         />
-        <Route
-          path="/super-admin/projects"
-          element={
-            currentUser && (currentUser.role === 'super_admin' || currentUser.role === 'admin') ? (
-              <ProjectsPage user={currentUser} onLogout={handleLogout} />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
+        {/* Projects are handled inside the dashboard layouts (nested routes)
+            so no standalone top-level /super-admin/projects route is needed. */}
         <Route
           path="/admin/*"
           element={
@@ -92,16 +84,7 @@ function App() {
             )
           }
         />
-        <Route
-          path="/admin/projects"
-          element={
-            currentUser && (currentUser.role === 'admin' || currentUser.role === 'super_admin') ? (
-              <ProjectsPage user={currentUser} onLogout={handleLogout} />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
+        {/* Projects route for admin is nested inside the AdminDashboard layout. */}
         <Route
           path="/reviewer/*"
           element={

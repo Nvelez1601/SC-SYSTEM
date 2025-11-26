@@ -9,7 +9,8 @@ class EmailService {
 
   initializeTransporter() {
     try {
-      this.transporter = nodemailer.createTransporter(emailConfig.smtp);
+      console.log('[EmailService] initializing transporter with config:', emailConfig && emailConfig.smtp && {host: emailConfig.smtp.host, port: emailConfig.smtp.port});
+      this.transporter = nodemailer.createTransport(emailConfig.smtp);
     } catch (error) {
       console.error('Failed to initialize email transporter:', error);
     }

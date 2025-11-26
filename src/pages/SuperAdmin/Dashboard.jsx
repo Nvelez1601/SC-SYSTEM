@@ -2,64 +2,28 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useNavigate } from 'react-router-dom';
 import UserManagement from './UserManagement';
 import ProjectsPage from '../Projects/Projects';
+import DashboardLayout from '../../components/DashboardLayout';
 
 function Dashboard({ user, onLogout }) {
-  const navigate = useNavigate();
+  const links = [
+    { to: '', label: 'Dashboard' },
+    { to: 'projects', label: 'Projects' },
+    { to: 'users', label: 'User Management' },
+  ];
 
-  const handleLogout = () => {
-    onLogout();
-    navigate('/login');
+  const logoutHandler = () => {
+    if (onLogout) onLogout();
   };
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white shadow-lg">
-        <div className="p-6 border-b">
-          <h2 className="text-xl font-bold text-gray-800">Super Admin</h2>
-          <p className="text-sm text-gray-600 mt-1">{user.username}</p>
-        </div>
-
-        <nav className="p-4">
-          <Link
-            to="/super-admin"
-            className="block px-4 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg mb-2"
-          >
-            Dashboard
-          </Link>
-          <Link
-            to="/super-admin/projects"
-            className="block px-4 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg mb-2"
-          >
-            Projects
-          </Link>
-          <Link
-            to="/super-admin/users"
-            className="block px-4 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg mb-2"
-          >
-            User Management
-          </Link>
-        </nav>
-
-        <div className="absolute bottom-0 w-64 p-4 border-t">
-          <button
-            onClick={handleLogout}
-            className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-          >
-            Logout
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
-        <Routes>
-          <Route path="/" element={<DashboardHome user={user} />} />
-          <Route path="/users" element={<UserManagement />} />
-          <Route path="/projects" element={<ProjectsPage user={user} onLogout={onLogout} />} />
-        </Routes>
-      </main>
-    </div>
+    <DashboardLayout user={user} title="Super Admin" links={links} onLogout={logoutHandler}>
+      {/* nested routes are provided via Outlet in DashboardLayout */}
+      <Routes>
+        <Route path="" element={<DashboardHome user={user} />} />
+        <Route path="users" element={<UserManagement />} />
+        <Route path="projects" element={<ProjectsPage user={user} onLogout={onLogout} />} />
+      </Routes>
+    </DashboardLayout>
   );
 }
 

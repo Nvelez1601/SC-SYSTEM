@@ -9,17 +9,26 @@ class UserController {
     const db = DatabaseConnection.getInstance();
     this.userRepository = new UserRepository(db.getDatabase('users'));
     this.currentUser = null;
+    console.log('[UserController] initialized');
   }
 
   async login(credentials) {
-    const loginUseCase = new LoginUserUseCase();
-    const result = await loginUseCase.execute(credentials.username, credentials.password);
-    
-    if (result.success) {
-      this.currentUser = result.user;
+    try {
+      console.log('[UserController] login called for username:', credentials && credentials.username);
+      const loginUseCase = new LoginUserUseCase();
+      const result = await loginUseCase.execute(credentials.username, credentials.password);
+
+      console.log('[UserController] login result for', credentials && credentials.username, result && (result.success ? 'SUCCESS' : `FAIL: ${result.error}`));
+
+      if (result.success) {
+        this.currentUser = result.user;
+      }
+
+      return result;
+    } catch (error) {
+      console.error('[UserController] login error for', credentials && credentials.username, error);
+      return { success: false, error: error.message };
     }
-    
-    return result;
   }
 
   async logout() {
@@ -28,6 +37,7 @@ class UserController {
   }
 
   getCurrentUser() {
+    console.log('[UserController] getCurrentUser called, currentUser:', !!this.currentUser);
     return {
       success: true,
       user: this.currentUser,
