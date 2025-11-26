@@ -213,8 +213,7 @@ Super Administrator (Unique)
 Administrator (Multiple)
     ↓
 Reviewer (Multiple)
-    ↓
-Student (Multiple, Passive)
+
 ```
 
 ### Sequential Delivery Workflow
