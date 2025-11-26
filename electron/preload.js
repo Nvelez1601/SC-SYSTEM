@@ -24,8 +24,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Delivery Management
   submitDelivery: (deliveryData) => ipcRenderer.invoke('delivery:submit', deliveryData),
-  reviewDelivery: (deliveryId, reviewData) => ipcRenderer.invoke('delivery:review', deliveryId, reviewData),
+  reviewDelivery: (deliveryId, reviewerId, action, comments) => ipcRenderer.invoke('delivery:review', deliveryId, reviewerId, action, comments),
   getDeliveriesByProject: (projectId) => ipcRenderer.invoke('delivery:getByProject', projectId),
+  getPendingDeliveries: () => ipcRenderer.invoke('delivery:getPending'),
   
   // Notifications
   sendEmail: (emailData) => ipcRenderer.invoke('email:send', emailData),

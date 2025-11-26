@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Login from './pages/Login';
 import SuperAdminDashboard from './pages/SuperAdmin/Dashboard';
 import AdminDashboard from './pages/Admin/Dashboard';
+import ReviewerDashboard from './pages/Reviewer/Dashboard';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -75,6 +76,16 @@ function App() {
           element={
             currentUser && currentUser.role === 'admin' ? (
               <AdminDashboard user={currentUser} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
+          path="/reviewer/*"
+          element={
+            currentUser && currentUser.role === 'reviewer' ? (
+              <ReviewerDashboard user={currentUser} onLogout={handleLogout} />
             ) : (
               <Navigate to="/login" replace />
             )
