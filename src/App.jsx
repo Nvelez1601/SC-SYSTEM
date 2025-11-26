@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import SuperAdminDashboard from './pages/SuperAdmin/Dashboard';
 import AdminDashboard from './pages/Admin/Dashboard';
 import ReviewerDashboard from './pages/Reviewer/Dashboard';
+import ProjectsPage from './pages/Projects/Projects';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -72,6 +73,16 @@ function App() {
           }
         />
         <Route
+          path="/super-admin/projects"
+          element={
+            currentUser && (currentUser.role === 'super_admin' || currentUser.role === 'admin') ? (
+              <ProjectsPage user={currentUser} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
           path="/admin/*"
           element={
             currentUser && currentUser.role === 'admin' ? (
@@ -82,9 +93,19 @@ function App() {
           }
         />
         <Route
+          path="/admin/projects"
+          element={
+            currentUser && (currentUser.role === 'admin' || currentUser.role === 'super_admin') ? (
+              <ProjectsPage user={currentUser} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
           path="/reviewer/*"
           element={
-            currentUser && currentUser.role === 'reviewer' ? (
+            currentUser && (currentUser.role === 'reviewer' || currentUser.role === 'admin' || currentUser.role === 'super_admin') ? (
               <ReviewerDashboard user={currentUser} onLogout={handleLogout} />
             ) : (
               <Navigate to="/login" replace />

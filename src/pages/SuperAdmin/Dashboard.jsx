@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useNavigate } from 'react-router-dom';
 import UserManagement from './UserManagement';
+import ProjectsPage from '../Projects/Projects';
 
 function Dashboard({ user, onLogout }) {
   const navigate = useNavigate();
@@ -27,6 +28,12 @@ function Dashboard({ user, onLogout }) {
             Dashboard
           </Link>
           <Link
+            to="/super-admin/projects"
+            className="block px-4 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg mb-2"
+          >
+            Projects
+          </Link>
+          <Link
             to="/super-admin/users"
             className="block px-4 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg mb-2"
           >
@@ -49,6 +56,7 @@ function Dashboard({ user, onLogout }) {
         <Routes>
           <Route path="/" element={<DashboardHome user={user} />} />
           <Route path="/users" element={<UserManagement />} />
+          <Route path="/projects" element={<ProjectsPage user={user} onLogout={onLogout} />} />
         </Routes>
       </main>
     </div>

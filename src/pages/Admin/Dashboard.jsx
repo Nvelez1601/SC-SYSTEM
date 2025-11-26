@@ -14,6 +14,9 @@ function Dashboard({ user, onLogout }) {
           <a href="#" className="block px-4 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg mb-2">
             Dashboard
           </a>
+          <a href="/admin/projects" className="block px-4 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg mb-2">
+            Projects
+          </a>
         </nav>
 
         <div className="absolute bottom-0 w-64 p-4 border-t">
