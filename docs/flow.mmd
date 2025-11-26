@@ -1,0 +1,50 @@
+flowchart LR
+  %% Nodes
+  U[Usuario]
+  R[Renderer]
+  P[Preload]
+  M[Main]
+  UC[UserController]
+  UR[UserRepository]
+  PR[ProjectRepository]
+  DC[DeliveryController]
+  DR[DeliveryRepository]
+  ES[EmailService]
+  SMTP[(SMTP)]
+  DB[(NeDB)]
+
+  %% Grouping to reduce crossing lines
+  subgraph Frontend
+    U --> R --> P
+  end
+
+  subgraph Backend
+    P --> M
+    M --> UC --> UR --> DB
+    P --> PR --> DB
+    P --> DC --> DR --> DB
+    DC --> ES --> SMTP
+  end
+
+  %% Styles (optional)
+  %% Color theme inspired by your sample (labels legible, pretty fills)
+  classDef pink fill:#ff8ad8,stroke:#3a3a3a,stroke-width:1px,color:#ffffff;
+  classDef purple fill:#9aa7ff,stroke:#3a3a3a,stroke-width:1px,color:#1b1b1b;
+  classDef mint fill:#b6ffd2,stroke:#3a3a3a,stroke-width:1px,color:#1b1b1b;
+  classDef dark fill:#2f2f2f,stroke:#bfbfbf,stroke-width:1px,color:#ffffff;
+  classDef amber fill:#ffe69a,stroke:#3a3a3a,stroke-width:1px,color:#1b1b1b;
+  classDef coral fill:#ffb3a6,stroke:#3a3a3a,stroke-width:1px,color:#1b1b1b;
+
+  %% Apply classes
+  class U pink;
+  class R purple;
+  class P dark;
+  class M mint;
+  class UC dark;
+  class UR dark;
+  class PR dark;
+  class DC dark;
+  class DR dark;
+  class ES coral;
+  class SMTP dark;
+  class DB amber;

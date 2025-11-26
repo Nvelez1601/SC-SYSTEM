@@ -17,10 +17,10 @@ Este documento describe, en español, los principales procesos implementados en 
 ## Diagrama de flujo (Mermaid)
 
 ```mermaid
-flowchart TD
-  U[Usuario (UI)] -->|login| R(Renderer)
-  R -->|electronAPI.login| P(Preload / IPC)
-  P -->|ipc:user:login| M(Main / IPC Handlers)
+graph TD
+  U[Usuario (UI)] -->|login| R[Renderer]
+  R -->|electronAPI.login| P[Preload IPC]
+  P -->|ipc:user:login| M[Main IPC Handlers]
   M --> UC[UserController]
   UC --> UR[UserRepository]
   UR --> DB[(NeDB files)]
@@ -29,14 +29,13 @@ flowchart TD
   UC --> M
   M --> P
   P --> R
-  R -->|navegación: Projects| R2(Projects Page)
-  R2 -->|create/update/delete| P
-  P -->|ipc:project:create/update/delete|getProj(Main)
-  getProj --> PR[ProjectRepository]
+
+  R -->|navegación: Projects| PRJ[Projects Page]
+  PRJ -->|create/update/delete| P
+  P -->|ipc:project| PR[ProjectRepository]
   PR --> DB
-  PR --> getProj
-  getProj --> P
-  P --> R2
+  PR --> P
+  P --> PRJ
 
   %% Deliveries flow
   R -->|submit delivery| P
@@ -45,15 +44,15 @@ flowchart TD
   DR --> DB
   DR --> DC
   DC --> M
-  DC -->|notify reviewer| P
+  M --> P
   P --> R
 
   %% Reviewer review flow
   R -->|review action| P
   P -->|ipc:delivery:review| DC
   DC --> DR
-  DC -->|if notify| ES[EmailService]
-  ES --> SMTP[(SMTP via nodemailer)]
+  DC --> ES[EmailService]
+  ES --> SMTP[(SMTP)]
 
   style U fill:#f9f,stroke:#333,stroke-width:1px
   style R fill:#ccf,stroke:#333
@@ -107,7 +106,6 @@ flowchart TD
 - Convertir el diagrama en imágenes exportadas (`PNG`/`SVG`) y añadirlas al repo en `docs/`.
 - Añadir un diagrama de componentes (arquitectura) separado mostrando carpetas y dependencias.
 - Documentar workflows de despliegue o `npm run dev` para desarrolladores nuevos.
-
 ---
 
 Archivo generado automáticamente: `PROCESS_FLOW.md` — si quieres que ajuste el nivel de detalle, traducir más términos, o generar un PNG del diagrama, dime y lo hago.
