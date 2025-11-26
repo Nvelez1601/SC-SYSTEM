@@ -1,0 +1,42 @@
+{
+  "name": "usm-community-service-tracker",
+  "version": "1.0.0",
+  "description": "USM Community Service Tracker - Centralized system for tracking and certifying community service projects",
+  "main": "electron/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
+    "dev:vite": "vite",
+    "dev:electron": "wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "electron",
+    "react",
+    "community-service",
+    "usm"
+  ],
+  "author": "USM Development Team",
+  "license": "MIT",
+  "dependencies": {
+    "nedb": "^1.8.0",
+    "nodemailer": "^6.9.7",
+    "bcryptjs": "^2.4.3",
+    "date-fns": "^2.30.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "electron": "^28.0.0",
+    "vite": "^5.0.8",
+    "concurrently": "^8.2.2",
+    "wait-on": "^7.2.0",
+    "cross-env": "^7.0.3",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.6",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.1"
+  }
+}
