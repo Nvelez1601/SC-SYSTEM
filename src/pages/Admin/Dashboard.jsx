@@ -1,12 +1,14 @@
 import React from 'react';
 import { Routes, Route, Link, useNavigate } from 'react-router-dom';
 import ProjectsPage from '../Projects/Projects';
+import ImportPage from '../Projects/Import';
 import DashboardLayout from '../../components/DashboardLayout';
 
 function Dashboard({ user, onLogout }) {
   const links = [
     { to: '', label: 'Dashboard' },
     { to: 'projects', label: 'Projects' },
+    { to: 'projects/import', label: 'Import' },
   ];
 
   const logoutHandler = () => {
@@ -28,6 +30,7 @@ function Dashboard({ user, onLogout }) {
           }
         />
         <Route path="projects" element={<ProjectsPage user={user} onLogout={onLogout} />} />
+        <Route path="projects/import" element={<ImportPage user={user} onLogout={onLogout} />} />
       </Routes>
     </DashboardLayout>
   );

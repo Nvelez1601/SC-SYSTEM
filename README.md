@@ -190,6 +190,47 @@ This command will:
 
 ---
 
+## Importing Excel Data
+
+The application supports importing the university's Excel file as the source of projects and deliveries. The importer creates projects (if missing) and delivery records, and stores an import history for auditing.
+
+Usage (UI):
+- Log in as **Super Admin** or **Admin**.
+- Open the sidebar and go to **Projects → Import**.
+- Select the `.xlsx` file exported by the university and click **Importar**.
+- After the import completes you will see a visual confirmation and the import summary (projects created, deliveries created, errors). A chronological import history is shown below with options to refresh or clear the log.
+
+Usage (CLI):
+- You can run the importer directly from the project root (useful for automated imports):
+
+```bash
+node electron/scripts/runImportCli.js "C:\ruta\a\tu_archivo.xlsx"
+```
+
+Files created/used:
+- `data/imports.db` — import history records (auto-created)
+- `data/projects.db`, `data/deliveries.db` — projects and deliveries created/updated by the importer
+
+---
+
+## IPC Endpoints (Import)
+
+These handlers live in the Electron main process (`electron/ipc/handlers.js`) and are exposed to the renderer via `electron/preload.js`.
+
+- `project:importExcel` (args: `filePath`) — parses the Excel file, creates projects and deliveries, records an import entry; returns `{ success, results }` where `results` includes `createdProjects`, `createdDeliveries`, and `errors`.
+- `project:getImportHistory` () — returns `{ success, imports }` with a list of past import records sorted by `importedAt` desc.
+- `project:clearImportHistory` () — clears the imports log; returns `{ success, removed }`.
+
+Preload (renderer API):
+- `window.electronAPI.importExcel(filePath)` — invoke the import from UI.
+- `window.electronAPI.getImportHistory()` — fetch import history for display.
+- `window.electronAPI.clearImportHistory()` — clear saved import history.
+
+Notes:
+- The importer includes flexible column mapping for Spanish headers and tries to infer fields when headers are empty.
+- Project codes are generated when missing to avoid uniqueness conflicts.
+
+
 ## Default Credentials
 
 ### Super Administrator Account

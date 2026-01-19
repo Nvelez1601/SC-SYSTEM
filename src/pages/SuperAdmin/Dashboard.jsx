@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useNavigate } from 'react-router-dom';
 import UserManagement from './UserManagement';
 import ProjectsPage from '../Projects/Projects';
+import ImportPage from '../Projects/Import';
 import DashboardLayout from '../../components/DashboardLayout';
 
 function Dashboard({ user, onLogout }) {
   const links = [
     { to: '', label: 'Dashboard' },
     { to: 'projects', label: 'Projects' },
+    { to: 'projects/import', label: 'Import' },
     { to: 'users', label: 'User Management' },
   ];
 
@@ -22,6 +24,7 @@ function Dashboard({ user, onLogout }) {
         <Route path="" element={<DashboardHome user={user} />} />
         <Route path="users" element={<UserManagement />} />
         <Route path="projects" element={<ProjectsPage user={user} onLogout={onLogout} />} />
+        <Route path="projects/import" element={<ImportPage user={user} onLogout={onLogout} />} />
       </Routes>
     </DashboardLayout>
   );

@@ -3,6 +3,7 @@ const DeliveryController = require('../controllers/DeliveryController');
 const EmailService = require('../core/services/EmailService');
 const DatabaseConnection = require('../database/connection');
 const ProjectRepository = require('../database/repositories/ProjectRepository');
+const importExcel = require('../scripts/importExcel');
 
 let userController;
 let emailService;
@@ -201,6 +202,54 @@ function setupIpcHandlers(ipcMain) {
       return { success: true, project: created };
     } catch (err) {
       console.error('[IPC] project:create error', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('project:importExcel', async (event, filePath) => {
+    console.log('[IPC] project:importExcel called', { filePath });
+    try {
+      const res = await importExcel(filePath);
+      console.log('[IPC] project:importExcel result', { createdProjects: res && res.results && res.results.createdProjects, createdDeliveries: res && res.results && res.results.createdDeliveries });
+      return res;
+    } catch (err) {
+      console.error('[IPC] project:importExcel error', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('project:getImportHistory', async () => {
+    try {
+      const db = DatabaseConnection.getInstance();
+      const importsDb = db.getDatabase('imports');
+      if (!importsDb) return { success: true, imports: [] };
+
+      return new Promise((resolve) => {
+        importsDb.find({}).sort({ importedAt: -1 }).exec((err, docs) => {
+          if (err) resolve({ success: false, error: err.message });
+          else resolve({ success: true, imports: docs || [] });
+        });
+      });
+    } catch (err) {
+      console.error('[IPC] project:getImportHistory error', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('project:clearImportHistory', async () => {
+    try {
+      const db = DatabaseConnection.getInstance();
+      const importsDb = db.getDatabase('imports');
+      if (!importsDb) return { success: true };
+
+      return new Promise((resolve, reject) => {
+        importsDb.remove({}, { multi: true }, (err, numRemoved) => {
+          if (err) resolve({ success: false, error: err.message });
+          else resolve({ success: true, removed: numRemoved });
+        });
+      });
+    } catch (err) {
+      console.error('[IPC] project:clearImportHistory error', err);
       return { success: false, error: err.message };
     }
   });

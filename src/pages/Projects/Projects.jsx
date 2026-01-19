@@ -10,13 +10,53 @@ export default function ProjectsPage({ user }) {
   const loadProjects = async () => {
     setLoading(true);
     try {
-      if (window.electronAPI && window.electronAPI.getAllProjects) {
-        const res = await window.electronAPI.getAllProjects();
-        if (res && res.success) setProjects(res.projects || []);
-        else setProjects([]);
-      } else {
+      if (!window.electronAPI || !window.electronAPI.getAllProjects) {
         setProjects([]);
+        return;
       }
+
+      const res = await window.electronAPI.getAllProjects();
+      const projs = res && res.success ? (res.projects || []) : [];
+
+      // Fetch deliveries for each project to compute progress (3 deliveries total)
+      const enhanced = await Promise.all(projs.map(async (p) => {
+        try {
+          const dres = await window.electronAPI.getDeliveriesByProject(p._id);
+          const deliveries = dres && dres.success ? (dres.deliveries || []) : [];
+          const approvedCount = deliveries.filter(d => d.status === 'approved' || d.status === 'completed').length;
+          const progress = Math.min(100, Math.round((approvedCount / 3) * 100));
+
+          // If project reached 100% mark and not marked completed, update the project
+          if (progress === 100 && p.status !== 'completed') {
+            try {
+              await window.electronAPI.updateProject(p._id, { status: 'completed', progress: 100 });
+              p.status = 'completed';
+              p.progress = 100;
+            } catch (err) {
+              console.error('Failed to mark project completed', err);
+              p.progress = progress;
+            }
+          } else if (p.progress !== progress) {
+            // persist progress change
+            try {
+              await window.electronAPI.updateProject(p._id, { progress });
+            } catch (err) {
+              console.error('Failed to persist project progress', err);
+            }
+            p.progress = progress;
+          }
+
+          p._deliveries = deliveries;
+          p._approvedDeliveries = approvedCount;
+          return p;
+        } catch (err) {
+          console.error('Error loading deliveries for project', p._id, err);
+          p.progress = p.progress || 0;
+          return p;
+        }
+      }));
+
+      setProjects(enhanced);
     } catch (err) {
       console.error('Failed to load projects', err);
       setProjects([]);
@@ -25,7 +65,7 @@ export default function ProjectsPage({ user }) {
     }
   };
 
-  useEffect(() => {
+  React.useEffect(() => {
     loadProjects();
   }, []);
 
@@ -52,7 +92,21 @@ export default function ProjectsPage({ user }) {
   };
 
   const openEdit = (project) => {
-    setSelectedProject({ ...project });
+    (async () => {
+      try {
+        // ensure deliveries are loaded for the selected project
+        let p = { ...project };
+        if (!p._deliveries) {
+          const dres = await window.electronAPI.getDeliveriesByProject(p._id);
+          p._deliveries = dres && dres.success ? (dres.deliveries || []) : [];
+          p._approvedDeliveries = p._deliveries.filter(d => d.status === 'approved' || d.status === 'completed').length;
+        }
+        setSelectedProject(p);
+      } catch (err) {
+        console.error('Failed to load deliveries for project on openEdit', err);
+        setSelectedProject({ ...project });
+      }
+    })();
   };
 
   const closeEdit = () => {
@@ -138,6 +192,13 @@ export default function ProjectsPage({ user }) {
                 </div>
                 <div className="flex items-center space-x-4">
                   <div className="text-sm text-gray-500">Progress: {p.progress || 0}%</div>
+                                    <div className="w-40">
+                                      <div className="text-sm text-gray-500 mb-1">Progress: {p.progress || 0}%</div>
+                                      <div className="w-full h-2 bg-gray-200 rounded overflow-hidden">
+                                        <div className="h-2 bg-green-500" style={{ width: `${p.progress || 0}%` }} />
+                                      </div>
+                                      <div className="text-xs text-gray-500 mt-1">{(p._approvedDeliveries || 0)}/3 entregas aprobadas</div>
+                                    </div>
                   <div>
                     {p.status ? (
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full ${p.status === 'approved' ? 'bg-green-100 text-green-800' : p.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>
@@ -200,6 +261,29 @@ export default function ProjectsPage({ user }) {
               <div className="mb-4">
                 <label className="block text-sm mb-1">Status</label>
                 <div className="p-2 border rounded bg-gray-50">{selectedProject.status || '(none)'}</div>
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm mb-1">Entregas</label>
+                <div className="space-y-2 max-h-48 overflow-auto p-2 border rounded bg-gray-50">
+                  {selectedProject._deliveries && selectedProject._deliveries.length > 0 ? (
+                    selectedProject._deliveries.map(d => (
+                      <div key={d._id || `${d.projectId}-${d.deliveryNumber}`} className="p-2 bg-white rounded shadow-sm">
+                        <div className="flex justify-between">
+                          <div>
+                            <div className="font-medium">Entrega {d.deliveryNumber}</div>
+                            <div className="text-sm text-gray-600">{d.deliveryDate ? new Date(d.deliveryDate).toLocaleDateString() : 'Sin fecha'}</div>
+                          </div>
+                          <div className="text-sm">
+                            <div className={`px-2 py-1 rounded-full text-xs ${d.status === 'approved' ? 'bg-green-100 text-green-800' : d.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>{d.status}</div>
+                          </div>
+                        </div>
+                        {d.observations && <div className="text-sm text-gray-700 mt-2">Observaciones: {d.observations}</div>}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-sm text-gray-600">No hay entregas registradas.</div>
+                  )}
+                </div>
               </div>
               <div className="flex justify-between items-center">
                 <div className="space-x-2">

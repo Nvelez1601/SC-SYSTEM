@@ -7,6 +7,7 @@ const config = {
     projects: 'projects.db',
     deliveries: 'deliveries.db',
     notifications: 'notifications.db',
+    imports: 'imports.db',
   },
   
   app: {

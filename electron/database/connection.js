@@ -49,6 +49,11 @@ class DatabaseConnection {
         autoload: true,
       });
 
+      this.db.imports = new Datastore({
+        filename: path.join(config.database.path, config.database.imports),
+        autoload: true,
+      });
+
       // Create indexes
       this.db.users.ensureIndex({ fieldName: 'username', unique: true });
       this.db.users.ensureIndex({ fieldName: 'email', unique: true });
