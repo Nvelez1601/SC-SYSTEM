@@ -17,10 +17,10 @@ function Login({ onLogin }) {
       if (result.success) {
         onLogin(result.user);
       } else {
-        setError(result.error || 'Login failed');
+        setError(result.error || 'No se pudo iniciar sesión');
       }
     } catch (error) {
-      setError('An error occurred during login');
+      setError('Ocurrió un error al iniciar sesión');
       console.error('Login error:', error);
     } finally {
       setLoading(false);
@@ -32,15 +32,15 @@ function Login({ onLogin }) {
       <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            USM Community Service Tracker
+            USM - Seguimiento de Servicio Comunitario
           </h1>
-          <p className="text-gray-600">Sign in to your account</p>
+          <p className="text-gray-600">Inicia sesión en tu cuenta</p>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
             <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
-              Username
+              Usuario
             </label>
             <input
               type="text"
@@ -48,7 +48,7 @@ function Login({ onLogin }) {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-              placeholder="Enter your username"
+              placeholder="Ingresa tu usuario"
               required
               disabled={loading}
             />
@@ -56,7 +56,7 @@ function Login({ onLogin }) {
 
           <div className="mb-6">
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-              Password
+              Contraseña
             </label>
             <input
               type="password"
@@ -64,7 +64,7 @@ function Login({ onLogin }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-              placeholder="Enter your password"
+              placeholder="Ingresa tu contraseña"
               required
               disabled={loading}
             />
@@ -81,12 +81,12 @@ function Login({ onLogin }) {
             disabled={loading}
             className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {loading ? 'Signing in...' : 'Sign In'}
+            {loading ? 'Iniciando sesión...' : 'Ingresar'}
           </button>
         </form>
 
         <div className="mt-6 text-center text-sm text-gray-600">
-          <p>Contact your administrator for access</p>
+          <p>Contacta a tu administrador para acceder</p>
         </div>
       </div>
     </div>

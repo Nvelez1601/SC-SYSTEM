@@ -13,6 +13,7 @@ const documentToStudentId = (documentValue) => {
   if (!documentValue) return '';
   return documentValue.toString().replace(/[^0-9A-Za-z]/g, '').toUpperCase();
 };
+const generateRowNumber = () => `SC-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
 class ProjectController {
   constructor() {
@@ -45,16 +46,21 @@ class ProjectController {
     this.ensureRole(currentUser, [config.roles.SUPER_ADMIN, config.roles.ADMIN]);
     const defaults = this.timelineService.buildInitialFields(projectData);
     const registrant = sanitizeString(projectData.registeredBy) || this.getUserSignature(currentUser);
-    const studentFirstNames = sanitizeString(projectData.studentFirstNames);
-    const studentLastNames = sanitizeString(projectData.studentLastNames);
-    const studentDocument = sanitizeString(projectData.studentDocument);
+    const fallbackFirstNames = sanitizeString(projectData.member1FirstNames);
+    const fallbackLastNames = sanitizeString(projectData.member1LastNames);
+    const fallbackDocument = sanitizeString(projectData.member1Document);
+    const studentFirstNames = sanitizeString(projectData.studentFirstNames) || fallbackFirstNames;
+    const studentLastNames = sanitizeString(projectData.studentLastNames) || fallbackLastNames;
+    const studentDocument = sanitizeString(projectData.studentDocument) || fallbackDocument;
     const studentName = composeStudentName(studentFirstNames, studentLastNames, studentDocument || sanitizeString(projectData.studentName));
     const internalStudentId = documentToStudentId(studentDocument);
+    const rowNumber = sanitizeString(projectData.rowNumber) || generateRowNumber();
+    const boxNumber = sanitizeString(projectData.boxNumber) || sanitizeString(projectData.certificateNumber) || '';
     const payload = {
       title: sanitizeString(projectData.title) || 'Proyecto sin título',
       description: sanitizeString(projectData.description) || '',
-      rowNumber: sanitizeString(projectData.rowNumber) || '',
-      projectCode: sanitizeString(projectData.projectCode) || sanitizeString(projectData.rowNumber) || '',
+      rowNumber,
+      projectCode: rowNumber,
       studentName,
       studentFirstNames,
       studentLastNames,
@@ -64,9 +70,11 @@ class ProjectController {
       member1LastNames: sanitizeString(projectData.member1LastNames) || '',
       member2FirstNames: sanitizeString(projectData.member2FirstNames) || '',
       member2LastNames: sanitizeString(projectData.member2LastNames) || '',
+      member1Document: sanitizeString(projectData.member1Document) || '',
+      member2Document: sanitizeString(projectData.member2Document) || '',
       semester: sanitizeString(projectData.semester) || '',
       community: sanitizeString(projectData.community) || '',
-      certificateNumber: sanitizeString(projectData.certificateNumber) || '',
+      boxNumber,
       registeredBy: registrant,
       approvedBy: projectData.approvedBy ? sanitizeString(projectData.approvedBy) : registrant || null,
       totalDeliveries: projectData.totalDeliveries || this.timelineService.totalDeliveries,
@@ -86,7 +94,6 @@ class ProjectController {
     const allowedFields = [
       'title',
       'description',
-      'rowNumber',
       'studentFirstNames',
       'studentLastNames',
       'studentDocument',
@@ -94,10 +101,11 @@ class ProjectController {
       'member1LastNames',
       'member2FirstNames',
       'member2LastNames',
+      'member1Document',
+      'member2Document',
       'semester',
       'community',
-      'certificateNumber',
-      'projectCode',
+      'boxNumber',
       'registeredBy',
       'status',
       'statusDetail',
@@ -123,12 +131,6 @@ class ProjectController {
     ) {
       sanitized.studentName = composeStudentName(nextFirstNames, nextLastNames, nextDocument || project.studentName);
       sanitized.studentId = documentToStudentId(nextDocument);
-    }
-
-    if (sanitized.projectCode && !sanitized.projectCode.trim()) {
-      delete sanitized.projectCode;
-    } else if (!sanitized.projectCode && sanitized.rowNumber) {
-      sanitized.projectCode = sanitized.rowNumber;
     }
 
     if (updates.anteprojectApprovedAt) {
@@ -182,7 +184,7 @@ class ProjectController {
   }
 
   async approveAnteproject(projectId, approvedDate, currentUser) {
-    this.ensureRole(currentUser, [config.roles.SUPER_ADMIN, config.roles.ADMIN]);
+    this.ensureRole(currentUser, [config.roles.SUPER_ADMIN, config.roles.ADMIN, config.roles.REVIEWER]);
     const project = await this.projectRepo.findById(projectId);
     if (!project) {
       throw new Error('Project not found');

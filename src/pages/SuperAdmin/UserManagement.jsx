@@ -19,10 +19,10 @@ function UserManagement() {
       if (result.success) {
         setUsers(result.users);
       } else {
-        setError(result.error || 'Failed to load users');
+        setError(result.error || 'No se pudieron cargar los usuarios');
       }
     } catch (error) {
-      setError('An error occurred while loading users');
+      setError('Ocurrió un error al cargar los usuarios');
       console.error('Error loading users:', error);
     } finally {
       setLoading(false);
@@ -33,35 +33,35 @@ function UserManagement() {
     try {
       const result = await window.electronAPI.createUser(userData);
       if (result.success) {
-        setSuccess('User created successfully');
+        setSuccess('Usuario creado correctamente');
         setShowCreateModal(false);
         loadUsers();
         setTimeout(() => setSuccess(''), 3000);
       } else {
-        setError(result.error || 'Failed to create user');
+        setError(result.error || 'No se pudo crear el usuario');
       }
     } catch (error) {
-      setError('An error occurred while creating user');
+      setError('Ocurrió un error al crear el usuario');
       console.error('Error creating user:', error);
     }
   };
 
   const handleDeleteUser = async (userId) => {
-    if (!confirm('Are you sure you want to delete this user?')) {
+    if (!confirm('¿Seguro que deseas eliminar este usuario?')) {
       return;
     }
 
     try {
       const result = await window.electronAPI.deleteUser(userId);
       if (result.success) {
-        setSuccess('User deleted successfully');
+        setSuccess('Usuario eliminado correctamente');
         loadUsers();
         setTimeout(() => setSuccess(''), 3000);
       } else {
-        setError(result.error || 'Failed to delete user');
+        setError(result.error || 'No se pudo eliminar el usuario');
       }
     } catch (error) {
-      setError('An error occurred while deleting user');
+      setError('Ocurrió un error al eliminar el usuario');
       console.error('Error deleting user:', error);
     }
   };
@@ -69,12 +69,12 @@ function UserManagement() {
   return (
     <div className="p-8">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">User Management</h1>
+        <h1 className="text-3xl font-bold text-gray-800">Gestión de usuarios</h1>
         <button
           onClick={() => setShowCreateModal(true)}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
-          Create New User
+          Crear usuario
         </button>
       </div>
 
@@ -91,26 +91,26 @@ function UserManagement() {
       )}
 
       {loading ? (
-        <div className="text-center py-8">Loading users...</div>
+        <div className="text-center py-8">Cargando usuarios...</div>
       ) : (
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Username
+                  Usuario
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Email
+                  Correo
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Role
+                  Rol
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
+                  Estado
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
+                  Acciones
                 </th>
               </tr>
             </thead>
@@ -125,12 +125,12 @@ function UserManagement() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getRoleBadgeColor(user.role)}`}>
-                      {user.role}
+                      {getRoleLabel(user.role)}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${user.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                      {user.active ? 'Active' : 'Inactive'}
+                      {user.active ? 'Activo' : 'Inactivo'}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -139,7 +139,7 @@ function UserManagement() {
                         onClick={(e) => { e.stopPropagation(); handleDeleteUser(user._id); }}
                         className="text-red-600 hover:text-red-900"
                       >
-                        Delete
+                        Eliminar
                       </button>
                     )}
                   </td>
@@ -169,11 +169,11 @@ function UserManagement() {
                 setSelectedUser(null);
                 loadUsers();
               } else {
-                alert(res.error || 'Failed to update user');
+                alert(res.error || 'No se pudo actualizar el usuario');
               }
             } catch (err) {
               console.error('Update user error', err);
-              alert('Unexpected error updating user');
+              alert('Error inesperado al actualizar el usuario');
             }
           }}
           onDelete={async (id) => {
@@ -183,11 +183,11 @@ function UserManagement() {
                 setSelectedUser(null);
                 loadUsers();
               } else {
-                alert(res.error || 'Failed to delete user');
+                alert(res.error || 'No se pudo eliminar el usuario');
               }
             } catch (err) {
               console.error('Delete user error', err);
-              alert('Unexpected error deleting user');
+              alert('Error inesperado al eliminar el usuario');
             }
           }}
         />
@@ -214,11 +214,11 @@ function CreateUserModal({ onClose, onCreate }) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4">Create New User</h2>
+        <h2 className="text-2xl font-bold text-gray-800 mb-4">Crear usuario</h2>
         
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Usuario</label>
             <input
               type="text"
               value={formData.username}
@@ -229,7 +229,7 @@ function CreateUserModal({ onClose, onCreate }) {
           </div>
 
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Contraseña</label>
             <input
               type="password"
               value={formData.password}
@@ -240,7 +240,7 @@ function CreateUserModal({ onClose, onCreate }) {
           </div>
 
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Correo</label>
             <input
               type="email"
               value={formData.email}
@@ -251,19 +251,19 @@ function CreateUserModal({ onClose, onCreate }) {
           </div>
 
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Rol</label>
             <select
               value={formData.role}
               onChange={(e) => setFormData({ ...formData, role: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="admin">Administrator</option>
-              <option value="reviewer">Reviewer</option>
+              <option value="admin">Administrador</option>
+              <option value="reviewer">Revisor</option>
             </select>
           </div>
 
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Nombre</label>
             <input
               type="text"
               value={formData.firstName}
@@ -273,7 +273,7 @@ function CreateUserModal({ onClose, onCreate }) {
           </div>
 
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Apellido</label>
             <input
               type="text"
               value={formData.lastName}
@@ -288,13 +288,13 @@ function CreateUserModal({ onClose, onCreate }) {
               onClick={onClose}
               className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
             >
-              Cancel
+              Cancelar
             </button>
             <button
               type="submit"
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
-              Create User
+              Crear usuario
             </button>
           </div>
         </form>
@@ -314,39 +314,54 @@ function EditUserModal({ user, onClose, onUpdate, onDelete }) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4">Edit User</h2>
+        <h2 className="text-2xl font-bold text-gray-800 mb-4">Editar usuario</h2>
         <form onSubmit={handleSubmit}>
           <div className="mb-3">
-            <label className="block text-sm mb-1">Username</label>
+            <label className="block text-sm mb-1">Usuario</label>
             <input value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className="w-full border p-2 rounded" />
           </div>
           <div className="mb-3">
-            <label className="block text-sm mb-1">Email</label>
+            <label className="block text-sm mb-1">Correo</label>
             <input value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full border p-2 rounded" />
           </div>
           <div className="mb-3">
-            <label className="block text-sm mb-1">Role</label>
+            <label className="block text-sm mb-1">Rol</label>
             <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full border p-2 rounded">
-              <option value="admin">Administrator</option>
-              <option value="reviewer">Reviewer</option>
+              <option value="admin">Administrador</option>
+              <option value="reviewer">Revisor</option>
             </select>
           </div>
           <div className="mb-4">
-            <label className="block text-sm mb-1">Active</label>
+            <label className="block text-sm mb-1">Estado</label>
             <select value={formData.active ? 'active' : 'inactive'} onChange={e => setFormData({...formData, active: e.target.value === 'active'})} className="w-full border p-2 rounded">
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
+              <option value="active">Activo</option>
+              <option value="inactive">Inactivo</option>
             </select>
           </div>
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => onDelete(user._id)} className="px-4 py-2 border rounded text-red-600">Delete</button>
-            <button type="button" onClick={onClose} className="px-4 py-2 border rounded">Cancel</button>
-            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">Save</button>
+            <button type="button" onClick={() => onDelete(user._id)} className="px-4 py-2 border rounded text-red-600">Eliminar</button>
+            <button type="button" onClick={onClose} className="px-4 py-2 border rounded">Cancelar</button>
+            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">Guardar</button>
           </div>
         </form>
       </div>
     </div>
   );
+}
+
+function getRoleLabel(role) {
+  switch (role) {
+    case 'super_admin':
+      return 'Súper Admin';
+    case 'admin':
+      return 'Administrador';
+    case 'reviewer':
+      return 'Revisor';
+    case 'student':
+      return 'Estudiante';
+    default:
+      return role;
+  }
 }
 
 function getRoleBadgeColor(role) {

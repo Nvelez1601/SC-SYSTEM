@@ -7,16 +7,16 @@ export default function DashboardLayout({ user, title = '', links = [], onLogout
   const closeMenu = () => setIsMenuOpen(false);
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="flex items-center justify-between bg-white shadow px-4 py-3 sm:hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-white">
+      <header className="flex items-center justify-between bg-white/80 backdrop-blur shadow-sm px-4 py-3 sm:hidden">
         <div>
-          <h2 className="text-lg font-semibold text-gray-800">{title}</h2>
-          <p className="text-xs text-gray-500">{user?.username}</p>
+          <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
+          <p className="text-xs text-slate-500">{user?.username}</p>
         </div>
         <button
           type="button"
           onClick={() => setIsMenuOpen((prev) => !prev)}
-          className="inline-flex items-center justify-center rounded-md border border-gray-300 p-2 text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="inline-flex items-center justify-center rounded-md border border-slate-300 p-2 text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
           aria-label="Abrir menú"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -29,12 +29,12 @@ export default function DashboardLayout({ user, title = '', links = [], onLogout
 
       <div className="flex flex-col sm:flex-row min-h-[calc(100vh-56px)] sm:min-h-screen">
         <aside
-          className={`bg-white shadow-lg sm:w-64 sm:flex-shrink-0 ${isMenuOpen ? 'block' : 'hidden'} sm:block`}
+          className={`bg-white/90 backdrop-blur shadow-sm sm:w-64 sm:flex-shrink-0 ${isMenuOpen ? 'block' : 'hidden'} sm:block`}
         >
           <div className="flex flex-col h-full max-h-screen">
             <div className="hidden sm:block p-6 border-b">
-              <h2 className="text-xl font-bold text-gray-800">{title}</h2>
-              <p className="text-sm text-gray-600 mt-1">{user?.username}</p>
+              <h2 className="text-xl font-bold text-slate-800">{title}</h2>
+              <p className="text-sm text-slate-600 mt-1">{user?.username}</p>
             </div>
 
             <nav className="p-4 flex-1 overflow-y-auto">
@@ -43,7 +43,7 @@ export default function DashboardLayout({ user, title = '', links = [], onLogout
                   key={l.to}
                   to={l.to}
                   onClick={closeMenu}
-                  className="block px-4 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg mb-2"
+                  className="block px-4 py-2 text-slate-700 hover:bg-blue-100/60 hover:text-blue-700 rounded-lg mb-2 transition"
                 >
                   {l.label}
                 </Link>
@@ -56,9 +56,9 @@ export default function DashboardLayout({ user, title = '', links = [], onLogout
                   closeMenu();
                   onLogout?.();
                 }}
-                className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
-                Logout
+                Cerrar sesión
               </button>
             </div>
           </div>

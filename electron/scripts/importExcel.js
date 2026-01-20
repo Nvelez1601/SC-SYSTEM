@@ -32,17 +32,20 @@ function extractRows(sheet) {
   }
 
   let headerIndex = rawRows.findIndex((row) => isLikelyHeaderRow(row));
+  const defaultHeaderRow = ['No.', 'NOMBRES', 'APELLIDOS', 'CÉDULA', 'SEMESTRE', 'TITULO TC', 'COMUNIDAD'];
   if (headerIndex === -1) {
-    headerIndex = 0;
+    headerIndex = -1;
   }
 
-  const headerRow = rawRows[headerIndex].map((value, idx) => {
+  const headerRowSource = headerIndex >= 0 ? rawRows[headerIndex] : defaultHeaderRow;
+  const headerRow = headerRowSource.map((value, idx) => {
     const cellValue = value !== undefined && value !== null ? String(value).trim() : '';
     return cellValue || `__col_${idx}`;
   });
 
   const rows = [];
-  for (let i = headerIndex + 1; i < rawRows.length; i++) {
+  const startIndex = headerIndex >= 0 ? headerIndex + 1 : 0;
+  for (let i = startIndex; i < rawRows.length; i++) {
     const row = rawRows[i];
     if (!row) continue;
     const hasContent = row.some((cell) => cell !== undefined && cell !== null && String(cell).trim() !== '');
@@ -89,7 +92,11 @@ function mapRow(row) {
     semester: pick(['semestre', 'semestre academico', 'semestre actual']),
     title: pick(['titulo tc', 'titulo tc.', 'titulo tc__1', 'titulo', 'titulo proyecto']),
     community: pick(['comunidad', 'comuna', 'comunidad.', 'comunidad__1']),
+    boxNumber: pick(['caja nº', 'caja n°', 'caja n', 'caja', 'caja nº__1', 'caja n°__1', 'caja n__1', 'numero de caja', 'número de caja']),
     certificateNumber: pick(['numero de certificado', 'número de certificado', 'numero de certificado.']),
+    receivedBy: pick(['recibido por', 'recibido por__1', 'recibido por.', 'recibido por__2']),
+    anteprojectDate: pick(['entrega ap', 'entrega ap.', 'entrega ap__1']),
+    deliveryDate: pick(['entrega p', 'entrega p.', 'entrega p__1']),
   };
 }
 
@@ -104,7 +111,29 @@ function sanitizeDocument(value) {
   if (value === undefined || value === null) {
     return '';
   }
-  return value.toString().trim();
+  return value
+    .toString()
+    .toUpperCase()
+    .replace(/[^0-9A-Z-]/g, '')
+    .trim();
+}
+
+function isLikelyDocumentValue(value) {
+  if (!value) return false;
+  const text = value.toString().trim();
+  if (!text) return false;
+  if (/[A-Za-z]/.test(text)) return false;
+  const digits = text.match(/\d/g);
+  return Array.isArray(digits) && digits.length >= 6;
+}
+
+function splitDocumentCandidates(value) {
+  if (!value) return [];
+  return value
+    .toString()
+    .split(/[\s,;/]+/)
+    .map((part) => part.trim())
+    .filter((part) => part);
 }
 
 function normalizeStudentId(value) {
@@ -146,12 +175,29 @@ function hasMeaningfulData(mapped) {
   );
 }
 
-function deriveProjectCode({ rowNumber }) {
-  return sanitizeText(rowNumber);
+function isContinuationRow(mapped) {
+  const hasRowNumber = Boolean(sanitizeText(mapped.rowNumber));
+  if (hasRowNumber) return false;
+  const hasMemberData = Boolean(
+    sanitizeText(mapped.firstNames) ||
+      sanitizeText(mapped.lastNames) ||
+      sanitizeDocument(mapped.studentDocument)
+  );
+  const hasProjectData = Boolean(
+    sanitizeText(mapped.title) ||
+      sanitizeText(mapped.community) ||
+      sanitizeText(mapped.semester)
+  );
+  return hasMemberData && !hasProjectData;
+}
+
+function generateRowNumber() {
+  return `SC-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 }
 
 function buildLookupQueries(payload) {
   const queries = [];
+  if (payload.boxNumber) queries.push({ boxNumber: payload.boxNumber });
   if (payload.certificateNumber) queries.push({ certificateNumber: payload.certificateNumber });
   if (payload.projectCode) queries.push({ projectCode: payload.projectCode });
   if (payload.rowNumber) queries.push({ rowNumber: payload.rowNumber });
@@ -165,16 +211,32 @@ async function upsertProject(mapped, context) {
   const studentLastNames = sanitizeText(mapped.lastNames);
   const studentDocument = sanitizeDocument(mapped.studentDocument);
   const studentId = normalizeStudentId(studentDocument);
-  const semester = sanitizeText(mapped.semester);
+  let semester = sanitizeText(mapped.semester);
   const community = sanitizeText(mapped.community);
   const certificateNumber = sanitizeText(mapped.certificateNumber);
-  const rowNumber = sanitizeText(mapped.rowNumber);
+  const boxNumber = sanitizeText(mapped.boxNumber) || certificateNumber;
+  const rowNumber = sanitizeText(mapped.rowNumber) || generateRowNumber();
+  const receivedBy = sanitizeText(mapped.receivedBy);
+  const registrant = receivedBy || context.registrant;
+  const anteprojectApprovedAt = parseDateValue(mapped.anteprojectDate);
 
   const titleCandidate = sanitizeText(mapped.title);
   const fallbackName = [studentLastNames, studentFirstNames].filter(Boolean).join(' / ');
   const title = titleCandidate || fallbackName || 'Proyecto sin título';
   const studentName = fallbackName || studentDocument;
-  const projectCode = deriveProjectCode({ rowNumber });
+  const projectCode = rowNumber;
+
+  let member1Document = studentDocument;
+  let member2Document = '';
+
+  if (isLikelyDocumentValue(semester)) {
+    const candidates = splitDocumentCandidates(semester).filter(isLikelyDocumentValue);
+    if (candidates.length >= 1) {
+      if (!member1Document) member1Document = candidates[0];
+      if (!member2Document && candidates.length > 1) member2Document = candidates[1];
+      semester = '';
+    }
+  }
 
   const payload = {
     title,
@@ -184,16 +246,19 @@ async function upsertProject(mapped, context) {
     studentLastNames,
     studentDocument,
     studentId,
-    member1FirstNames: '',
-    member1LastNames: '',
+    member1FirstNames: studentFirstNames,
+    member1LastNames: studentLastNames,
+    member1Document,
     member2FirstNames: '',
     member2LastNames: '',
+    member2Document,
     semester,
     community,
-    certificateNumber,
+    boxNumber,
     projectCode,
-    approvedBy: context.registrant,
-    registeredBy: context.registrant,
+    approvedBy: registrant,
+    registeredBy: registrant,
+    anteprojectApprovedAt: anteprojectApprovedAt || undefined,
   };
 
   const queries = buildLookupQueries(payload);
@@ -208,14 +273,14 @@ async function upsertProject(mapped, context) {
   }
 
   if (!existing) {
-    const defaults = context.timelineService.buildInitialFields({ anteprojectApprovedAt: anteprojectApprovedAt || undefined });
-    await context.projectRepo.create({
+    const defaults = context.timelineService.buildInitialFields({ anteprojectApprovedAt: anteprojectApprovedAt || null });
+    const created = await context.projectRepo.create({
       ...defaults,
       ...payload,
       totalDeliveries: context.timelineService.totalDeliveries,
     });
     context.results.createdProjects += 1;
-    return;
+    return created;
   }
 
   const updates = {};
@@ -226,16 +291,48 @@ async function upsertProject(mapped, context) {
     }
   });
 
+  if (anteprojectApprovedAt && !existing.anteprojectApprovedAt) {
+    Object.assign(updates, context.timelineService.applyAnteprojectApproval(existing, anteprojectApprovedAt));
+    updates.approvedBy = registrant;
+  }
+
   if (!existing.registeredBy) {
-    updates.registeredBy = context.registrant;
+    updates.registeredBy = registrant;
   }
 
   if (Object.keys(updates).length > 0) {
-    await context.projectRepo.update(existing._id, updates);
+    const updated = await context.projectRepo.update(existing._id, updates);
     context.results.updatedProjects += 1;
+    return updated || existing;
   } else {
     context.results.skippedRows += 1;
+    return existing;
   }
+}
+
+async function appendMemberToLastProject(mapped, context) {
+  const lastProject = context.lastProject;
+  if (!lastProject) return null;
+
+  const memberFirstNames = sanitizeText(mapped.firstNames);
+  const memberLastNames = sanitizeText(mapped.lastNames);
+  const memberDocument = sanitizeDocument(mapped.studentDocument);
+
+  if (!memberFirstNames && !memberLastNames && !memberDocument) return null;
+
+  const updates = {};
+  if (!lastProject.member2FirstNames && memberFirstNames) updates.member2FirstNames = memberFirstNames;
+  if (!lastProject.member2LastNames && memberLastNames) updates.member2LastNames = memberLastNames;
+  if (!lastProject.member2Document && memberDocument) updates.member2Document = memberDocument;
+
+  if (Object.keys(updates).length === 0) {
+    context.results.skippedRows += 1;
+    return lastProject;
+  }
+
+  const updated = await context.projectRepo.update(lastProject._id, updates);
+  context.results.updatedProjects += 1;
+  return updated || lastProject;
 }
 
 async function importExcel(filePath, options = {}) {
@@ -258,6 +355,8 @@ async function importExcel(filePath, options = {}) {
     errors: [],
   };
 
+  let lastProject = null;
+
   for (const row of rows) {
     try {
       const mapped = mapRow(row);
@@ -265,7 +364,24 @@ async function importExcel(filePath, options = {}) {
         results.skippedRows += 1;
         continue;
       }
-      await upsertProject(mapped, { projectRepo, timelineService, registrant, results });
+      if (isContinuationRow(mapped)) {
+        const updated = await appendMemberToLastProject(mapped, {
+          projectRepo,
+          timelineService,
+          registrant,
+          results,
+          lastProject,
+        });
+        if (updated) {
+          lastProject = updated;
+        }
+        continue;
+      }
+
+      const project = await upsertProject(mapped, { projectRepo, timelineService, registrant, results });
+      if (project) {
+        lastProject = project;
+      }
     } catch (error) {
       results.errors.push({
         row,
