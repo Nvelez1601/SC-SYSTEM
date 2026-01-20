@@ -1,19 +1,32 @@
 const UserController = require('../controllers/UserController');
 const DeliveryController = require('../controllers/DeliveryController');
+const ProjectController = require('../controllers/ProjectController');
 const EmailService = require('../core/services/EmailService');
 const DatabaseConnection = require('../database/connection');
-const ProjectRepository = require('../database/repositories/ProjectRepository');
 const importExcel = require('../scripts/importExcel');
 
 let userController;
+let deliveryController;
+let projectController;
 let emailService;
 
 function setupIpcHandlers(ipcMain) {
   // Initialize controllers and services
   userController = new UserController();
   deliveryController = new DeliveryController();
+  projectController = new ProjectController();
   emailService = new EmailService();
   console.log('[IPC] setupIpcHandlers: controllers and services initialized');
+
+  const resolveCurrentUser = () => {
+    try {
+      const res = userController.getCurrentUser();
+      return res && res.user ? res.user : null;
+    } catch (err) {
+      console.error('[IPC] resolveCurrentUser error', err);
+      return null;
+    }
+  };
 
   // User Authentication Handlers
   ipcMain.handle('user:login', async (event, credentials) => {
@@ -194,12 +207,10 @@ function setupIpcHandlers(ipcMain) {
   ipcMain.handle('project:create', async (event, projectData) => {
     console.log('[IPC] project:create called', { projectCode: projectData && projectData.projectCode });
     try {
-      const db = DatabaseConnection.getInstance();
-      const projectRepo = new ProjectRepository(db.getDatabase('projects'));
-      const toCreate = { ...projectData, progress: projectData.progress || 0 };
-      const created = await projectRepo.create(toCreate);
-      console.log('[IPC] project:create result', { id: created && created._id });
-      return { success: true, project: created };
+      const currentUser = resolveCurrentUser();
+      const res = await projectController.createProject(projectData, currentUser);
+      console.log('[IPC] project:create result', { id: res && res.project && res.project._id });
+      return res;
     } catch (err) {
       console.error('[IPC] project:create error', err);
       return { success: false, error: err.message };
@@ -209,7 +220,11 @@ function setupIpcHandlers(ipcMain) {
   ipcMain.handle('project:importExcel', async (event, filePath) => {
     console.log('[IPC] project:importExcel called', { filePath });
     try {
-      const res = await importExcel(filePath);
+      const currentUser = resolveCurrentUser();
+      const requestedBy = currentUser && (currentUser.firstName || currentUser.lastName)
+        ? [currentUser.firstName, currentUser.lastName].filter(Boolean).join(' ').trim()
+        : (currentUser && currentUser.username) || 'desconocido';
+      const res = await importExcel(filePath, { requestedBy });
       console.log('[IPC] project:importExcel result', { createdProjects: res && res.results && res.results.createdProjects, createdDeliveries: res && res.results && res.results.createdDeliveries });
       return res;
     } catch (err) {
@@ -254,14 +269,14 @@ function setupIpcHandlers(ipcMain) {
     }
   });
 
-  ipcMain.handle('project:getAll', async (event, filters) => {
-    console.log('[IPC] project:getAll called', { filters });
+  ipcMain.handle('project:getAll', async (event, filters = {}) => {
+    const effectiveFilters = filters && typeof filters === 'object' ? { ...filters } : {};
+    console.log('[IPC] project:getAll called', { filters: effectiveFilters });
     try {
-      const db = DatabaseConnection.getInstance();
-      const projectRepo = new ProjectRepository(db.getDatabase('projects'));
-      const projects = await projectRepo.findAll(filters || {});
-      console.log('[IPC] project:getAll result count', projects.length);
-      return { success: true, projects };
+      const currentUser = resolveCurrentUser();
+      const res = await projectController.getAllProjects(effectiveFilters, currentUser);
+      console.log('[IPC] project:getAll result count', res && res.projects && res.projects.length);
+      return res;
     } catch (err) {
       console.error('[IPC] project:getAll error', err);
       return { success: false, error: err.message };
@@ -271,11 +286,10 @@ function setupIpcHandlers(ipcMain) {
   ipcMain.handle('project:getById', async (event, projectId) => {
     console.log('[IPC] project:getById called', { projectId });
     try {
-      const db = DatabaseConnection.getInstance();
-      const projectRepo = new ProjectRepository(db.getDatabase('projects'));
-      const project = await projectRepo.findById(projectId);
-      console.log('[IPC] project:getById result', { found: !!project });
-      return { success: true, project };
+      const currentUser = resolveCurrentUser();
+      const res = await projectController.getProjectById(projectId, currentUser);
+      console.log('[IPC] project:getById result', { found: !!(res && res.project) });
+      return res;
     } catch (err) {
       console.error('[IPC] project:getById error', err);
       return { success: false, error: err.message };
@@ -285,11 +299,10 @@ function setupIpcHandlers(ipcMain) {
   ipcMain.handle('project:update', async (event, projectId, projectData) => {
     console.log('[IPC] project:update called', { projectId, projectData });
     try {
-      const db = DatabaseConnection.getInstance();
-      const projectRepo = new ProjectRepository(db.getDatabase('projects'));
-      const updated = await projectRepo.update(projectId, projectData);
-      console.log('[IPC] project:update result', { id: updated && updated._id });
-      return { success: true, project: updated };
+      const currentUser = resolveCurrentUser();
+      const res = await projectController.updateProject(projectId, projectData, currentUser);
+      console.log('[IPC] project:update result', { id: res && res.project && res.project._id });
+      return res;
     } catch (err) {
       console.error('[IPC] project:update error', err);
       return { success: false, error: err.message };
@@ -299,13 +312,25 @@ function setupIpcHandlers(ipcMain) {
   ipcMain.handle('project:delete', async (event, projectId) => {
     console.log('[IPC] project:delete called', { projectId });
     try {
-      const db = DatabaseConnection.getInstance();
-      const projectRepo = new ProjectRepository(db.getDatabase('projects'));
-      const removed = await projectRepo.delete(projectId);
-      console.log('[IPC] project:delete result', { removed });
-      return { success: true, removed };
+      const currentUser = resolveCurrentUser();
+      const res = await projectController.deleteProject(projectId, currentUser);
+      console.log('[IPC] project:delete result', res);
+      return res;
     } catch (err) {
       console.error('[IPC] project:delete error', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('project:approveAnteproject', async (event, projectId, approvedDate) => {
+    console.log('[IPC] project:approveAnteproject called', { projectId, approvedDate });
+    try {
+      const currentUser = resolveCurrentUser();
+      const res = await projectController.approveAnteproject(projectId, approvedDate, currentUser);
+      console.log('[IPC] project:approveAnteproject result', { id: res && res.project && res.project._id });
+      return res;
+    } catch (err) {
+      console.error('[IPC] project:approveAnteproject error', err);
       return { success: false, error: err.message };
     }
   });

@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteProject: (projectId) => ipcRenderer.invoke('project:delete', projectId),
   getAllProjects: (filters) => ipcRenderer.invoke('project:getAll', filters),
   getProjectById: (projectId) => ipcRenderer.invoke('project:getById', projectId),
+  approveAnteproject: (projectId, approvedDate) => ipcRenderer.invoke('project:approveAnteproject', projectId, approvedDate),
   
   // Delivery Management
   submitDelivery: (deliveryData) => ipcRenderer.invoke('delivery:submit', deliveryData),

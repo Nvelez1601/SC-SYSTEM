@@ -21,7 +21,7 @@ class DeliveryRepository extends BaseRepository {
   }
 
   async findPendingReviews() {
-    return this.findAll({ status: 'in_review' });
+    return this.findAll({ status: { $in: ['in_review', 'pending'] } });
   }
 
   async findByReviewer(reviewerId) {

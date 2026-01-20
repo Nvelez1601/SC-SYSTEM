@@ -1,62 +1,132 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { format } from 'date-fns';
+
+const REVIEWER_ROLES = ['super_admin', 'admin', 'reviewer'];
+
+const deliveryStatusMeta = {
+  approved: { label: 'aprobada', pill: 'bg-green-100 text-green-700' },
+  in_review: { label: 'en revisión', pill: 'bg-yellow-100 text-yellow-700' },
+  pending: { label: 'pendiente', pill: 'bg-gray-100 text-gray-700' },
+  rejected: { label: 'rechazada', pill: 'bg-red-100 text-red-700' },
+};
+
+const getStatusMeta = (status) => deliveryStatusMeta[status] || { label: status || 'desconocido', pill: 'bg-gray-100 text-gray-700' };
+const formatStudentName = (project) => {
+  if (!project) return '';
+  const names = [project.studentLastNames || '', project.studentFirstNames || ''].filter(Boolean).join(' / ');
+  return names || project.studentName || '';
+};
+
+const getUserSignature = (user) => {
+  if (!user) return '';
+  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  return fullName || user.username || user.email || '';
+};
+
+const initialProjectForm = {
+  rowNumber: '',
+  studentFirstNames: '',
+  studentLastNames: '',
+  studentDocument: '',
+  member1FirstNames: '',
+  member1LastNames: '',
+  member2FirstNames: '',
+  member2LastNames: '',
+  semester: '',
+  title: '',
+  description: '',
+  community: '',
+  certificateNumber: '',
+  registeredBy: '',
+};
+
+const initialDeliveryForm = {
+  deliveryNumber: '',
+  title: '',
+  description: '',
+  observations: '',
+};
 
 export default function ProjectsPage({ user }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ projectCode: '', title: '', description: '' });
+  const [projectForm, setProjectForm] = useState({ ...initialProjectForm });
   const [selectedProject, setSelectedProject] = useState(null);
+  const [anteDate, setAnteDate] = useState('');
+  const [deliveryForm, setDeliveryForm] = useState({ ...initialDeliveryForm });
+  const [infoForm, setInfoForm] = useState({ ...initialProjectForm });
+  const [actionMessage, setActionMessage] = useState('');
+  const [reviewNotes, setReviewNotes] = useState({});
+  const userSignature = useMemo(() => getUserSignature(user), [user]);
+  const canReviewDeliveries = useMemo(() => REVIEWER_ROLES.includes(user?.role), [user]);
+  const reviewerIdentifier = useMemo(() => user?._id || user?.username || user?.email || userSignature, [user, userSignature]);
+
+  useEffect(() => {
+    if (userSignature) {
+      setProjectForm((prev) => ({ ...prev, registeredBy: prev.registeredBy || userSignature }));
+    }
+  }, [userSignature]);
+
+  const requiredFieldLabels = {
+    rowNumber: 'No.',
+    studentLastNames: 'Apellidos',
+    studentFirstNames: 'Nombres',
+    studentDocument: 'Cédula',
+    semester: 'Semestre',
+    title: 'Título TC',
+    community: 'Comunidad',
+  };
+
+  const ensureRequiredFields = (data) => {
+    const missing = Object.entries(requiredFieldLabels)
+      .filter(([field]) => !data[field] || !String(data[field]).trim())
+      .map(([, label]) => label);
+
+    if (missing.length) {
+      alert(`Completa los siguientes campos: ${missing.join(', ')}`);
+      return false;
+    }
+    return true;
+  };
+
+  const getExpectedPhaseValue = (project) =>
+    project?.expectedDeliveryNumber ? String(project.expectedDeliveryNumber) : '';
+
+  const resetDeliveryFormForProject = (project) => {
+    setDeliveryForm({ ...initialDeliveryForm, deliveryNumber: getExpectedPhaseValue(project) });
+  };
+
+  const getCompletionStats = (project) => {
+    const deliveries = project?.deliveries || [];
+    const total = project?.totalDeliveries || 3;
+    const accepted = deliveries.filter((d) => d.status === 'approved').length;
+    const inReview = deliveries.filter((d) => d.status === 'in_review').length;
+    const percentage = total ? Math.round((accepted / total) * 100) : 0;
+    return { total, accepted, inReview, percentage }; 
+  };
+
+  const api = window.electronAPI || {};
+  const openCreateModal = () => {
+    setProjectForm({ ...initialProjectForm, registeredBy: userSignature || projectForm.registeredBy });
+    setShowCreate(true);
+  };
+  const closeCreateModal = () => {
+    setShowCreate(false);
+    setProjectForm({ ...initialProjectForm, registeredBy: userSignature || '' });
+  };
 
   const loadProjects = async () => {
+    if (!api.getAllProjects) {
+      setProjects([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      if (!window.electronAPI || !window.electronAPI.getAllProjects) {
-        setProjects([]);
-        return;
-      }
-
-      const res = await window.electronAPI.getAllProjects();
-      const projs = res && res.success ? (res.projects || []) : [];
-
-      // Fetch deliveries for each project to compute progress (3 deliveries total)
-      const enhanced = await Promise.all(projs.map(async (p) => {
-        try {
-          const dres = await window.electronAPI.getDeliveriesByProject(p._id);
-          const deliveries = dres && dres.success ? (dres.deliveries || []) : [];
-          const approvedCount = deliveries.filter(d => d.status === 'approved' || d.status === 'completed').length;
-          const progress = Math.min(100, Math.round((approvedCount / 3) * 100));
-
-          // If project reached 100% mark and not marked completed, update the project
-          if (progress === 100 && p.status !== 'completed') {
-            try {
-              await window.electronAPI.updateProject(p._id, { status: 'completed', progress: 100 });
-              p.status = 'completed';
-              p.progress = 100;
-            } catch (err) {
-              console.error('Failed to mark project completed', err);
-              p.progress = progress;
-            }
-          } else if (p.progress !== progress) {
-            // persist progress change
-            try {
-              await window.electronAPI.updateProject(p._id, { progress });
-            } catch (err) {
-              console.error('Failed to persist project progress', err);
-            }
-            p.progress = progress;
-          }
-
-          p._deliveries = deliveries;
-          p._approvedDeliveries = approvedCount;
-          return p;
-        } catch (err) {
-          console.error('Error loading deliveries for project', p._id, err);
-          p.progress = p.progress || 0;
-          return p;
-        }
-      }));
-
-      setProjects(enhanced);
+      const res = await api.getAllProjects();
+      setProjects(res?.success ? res.projects ?? [] : []);
     } catch (err) {
       console.error('Failed to load projects', err);
       setProjects([]);
@@ -65,176 +135,611 @@ export default function ProjectsPage({ user }) {
     }
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
     loadProjects();
   }, []);
 
-  const handleCreate = async (e) => {
-    e.preventDefault();
+  const handleCreate = async (event) => {
+    event.preventDefault();
+    if (!api.createProject) return;
+
+    if (!ensureRequiredFields(projectForm)) return;
+
     try {
-      if (!window.electronAPI || !window.electronAPI.createProject) {
-        alert('Create project is not wired in main process yet');
-        return;
-      }
-      console.log('[ProjectsPage] creating project', form);
-      const res = await window.electronAPI.createProject(form);
-      if (res && res.success) {
-        setShowCreate(false);
-        setForm({ projectCode: '', title: '', description: '' });
-        loadProjects();
+      const payload = Object.entries(projectForm).reduce((acc, [key, value]) => {
+        const sanitized = typeof value === 'string' ? value.trim() : value;
+        if (sanitized !== '') acc[key] = sanitized;
+        return acc;
+      }, {});
+      const res = await api.createProject(payload);
+      if (res?.success) {
+        closeCreateModal();
+        await loadProjects();
       } else {
-        alert(res.error || 'Failed to create project');
+        alert(res?.error || 'No se pudo crear el proyecto');
       }
     } catch (err) {
       console.error('Create project error', err);
-      alert('Unexpected error creating project');
+      alert('Error creando el proyecto');
     }
   };
 
   const openEdit = (project) => {
-    (async () => {
-      try {
-        // ensure deliveries are loaded for the selected project
-        let p = { ...project };
-        if (!p._deliveries) {
-          const dres = await window.electronAPI.getDeliveriesByProject(p._id);
-          p._deliveries = dres && dres.success ? (dres.deliveries || []) : [];
-          p._approvedDeliveries = p._deliveries.filter(d => d.status === 'approved' || d.status === 'completed').length;
-        }
-        setSelectedProject(p);
-      } catch (err) {
-        console.error('Failed to load deliveries for project on openEdit', err);
-        setSelectedProject({ ...project });
-      }
-    })();
+    setSelectedProject(project);
+    setAnteDate(project.anteprojectApprovedAt ? project.anteprojectApprovedAt.slice(0, 10) : '');
+    setInfoForm({
+      rowNumber: project.rowNumber || '',
+      studentFirstNames: project.studentFirstNames || '',
+      studentLastNames: project.studentLastNames || '',
+      studentDocument: project.studentDocument || '',
+      member1FirstNames: project.member1FirstNames || '',
+      member1LastNames: project.member1LastNames || '',
+      member2FirstNames: project.member2FirstNames || '',
+      member2LastNames: project.member2LastNames || '',
+      semester: project.semester || '',
+      title: project.title || '',
+      description: project.description || '',
+      community: project.community || '',
+      certificateNumber: project.certificateNumber || '',
+      registeredBy: project.registeredBy || userSignature || '',
+    });
+    resetDeliveryFormForProject(project);
+    setActionMessage('');
   };
 
   const closeEdit = () => {
     setSelectedProject(null);
-  };
-
-  const handleUpdate = async (e) => {
-    e && e.preventDefault();
-    if (!selectedProject) return;
-    try {
-      console.log('[ProjectsPage] updating project', selectedProject._id, selectedProject);
-      if (!window.electronAPI || !window.electronAPI.updateProject) {
-        throw new Error('IPC method updateProject not available');
-      }
-      const res = await window.electronAPI.updateProject(selectedProject._id, selectedProject);
-      if (res && res.success) {
-        closeEdit();
-        loadProjects();
-      } else {
-        alert(res.error || 'Failed to update project');
-      }
-    } catch (err) {
-      console.error('Update project error', err);
-      if (err && typeof err.message === 'string' && err.message.includes('No handler registered')) {
-        alert('IPC handler for project:update no está registrado. Por favor reinicia la aplicación para cargar handlers del main.');
-      } else if (err && err.message === 'IPC method updateProject not available') {
-        alert('La API IPC `updateProject` no está disponible en preload. Reinicia la app o verifica preload.js');
-      } else {
-        alert('Unexpected error updating project');
-      }
-    }
+    setActionMessage('');
   };
 
   const handleDelete = async (projectId) => {
-    if (!confirm('Are you sure you want to delete this project?')) return;
+    if (!api.deleteProject) return;
+    if (!confirm('¿Seguro que deseas eliminar este proyecto?')) return;
+
     try {
-      console.log('[ProjectsPage] deleting project', projectId);
-      const res = await window.electronAPI.deleteProject(projectId);
-      if (res && res.success) {
-        loadProjects();
+      const res = await api.deleteProject(projectId);
+      if (res?.success) {
+        await loadProjects();
+        if (selectedProject?._id === projectId) closeEdit();
       } else {
-        alert(res.error || 'Failed to delete project');
+        alert(res?.error || 'No se pudo eliminar el proyecto');
       }
     } catch (err) {
       console.error('Delete project error', err);
-      alert('Unexpected error deleting project');
+      alert('Error eliminando el proyecto');
     }
   };
 
-  const handleApprove = async () => {
-    if (!selectedProject) return;
-    // only set local status, do not auto-save or close modal
-    setSelectedProject(prev => ({ ...prev, status: 'approved' }));
+  const refreshSelectedProject = async (projectId) => {
+    if (!api.getProjectById) return;
+    try {
+      const refreshed = await api.getProjectById(projectId);
+      if (refreshed?.success) {
+        setSelectedProject(refreshed.project);
+        setInfoForm({
+          rowNumber: refreshed.project.rowNumber || '',
+          studentFirstNames: refreshed.project.studentFirstNames || '',
+          studentLastNames: refreshed.project.studentLastNames || '',
+          studentDocument: refreshed.project.studentDocument || '',
+          member1FirstNames: refreshed.project.member1FirstNames || '',
+          member1LastNames: refreshed.project.member1LastNames || '',
+          member2FirstNames: refreshed.project.member2FirstNames || '',
+          member2LastNames: refreshed.project.member2LastNames || '',
+          semester: refreshed.project.semester || '',
+          title: refreshed.project.title || '',
+          description: refreshed.project.description || '',
+          community: refreshed.project.community || '',
+          certificateNumber: refreshed.project.certificateNumber || '',
+          registeredBy: refreshed.project.registeredBy || userSignature || '',
+        });
+        setAnteDate(refreshed.project.anteprojectApprovedAt ? refreshed.project.anteprojectApprovedAt.slice(0, 10) : '');
+        resetDeliveryFormForProject(refreshed.project);
+      }
+    } catch (err) {
+      console.error('Refresh project error', err);
+    }
   };
 
-  const handleReject = async () => {
-    if (!selectedProject) return;
-    // only set local status, do not auto-save or close modal
-    setSelectedProject(prev => ({ ...prev, status: 'rejected' }));
+  const handleApproveAnteproject = async () => {
+    if (!selectedProject || !api.approveAnteproject) return;
+    if (!anteDate) {
+      alert('Selecciona la fecha de aprobación.');
+      return;
+    }
+    try {
+      const isoDate = new Date(anteDate).toISOString();
+      const res = await api.approveAnteproject(selectedProject._id, isoDate);
+      if (res?.success) {
+        setActionMessage('Anteproyecto aprobado');
+        await loadProjects();
+        await refreshSelectedProject(selectedProject._id);
+      } else {
+        alert(res?.error || 'No se pudo aprobar el anteproyecto');
+      }
+    } catch (err) {
+      console.error('Approve anteproject error', err);
+      alert('Error aprobando anteproyecto');
+    }
   };
 
-  return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Projects</h1>
-        <div>
-          <button onClick={() => setShowCreate(true)} className="px-3 py-1 bg-blue-600 text-white rounded">New Project</button>
-        </div>
-      </div>
+  const handleSubmitDelivery = async () => {
+    if (!selectedProject || !api.submitDelivery) return;
+    if (!selectedProject.anteprojectApprovedAt) {
+      alert('Primero aprueba el anteproyecto.');
+      return;
+    }
 
-      {loading ? (
-        <div>Loading projects...</div>
-      ) : projects.length === 0 ? (
-        <div className="text-gray-600">No projects found.</div>
-      ) : (
-        <div className="grid gap-4">
-          {projects.map(p => (
-            <div key={p._id} className="bg-white p-4 rounded shadow cursor-pointer" onClick={() => openEdit(p)}>
-              <div className="flex justify-between items-center">
+    const deliveryNumber = Number(deliveryForm.deliveryNumber);
+    const title = (deliveryForm.title || '').trim();
+    const description = (deliveryForm.description || '').trim();
+    const observations = (deliveryForm.observations || '').trim();
+    if (!deliveryNumber || !title || !description) {
+      alert('Selecciona la fase esperada y completa título y descripción de la entrega.');
+      return;
+    }
+
+    const expected = selectedProject.expectedDeliveryNumber || 1;
+    const blockingDelivery = selectedProject.deliveries?.find(
+      (d) => d.deliveryNumber === expected && (d.status === 'pending' || d.status === 'in_review')
+    );
+    if (blockingDelivery) {
+      alert('Ya existe una entrega registrada para esta fase y aún está en revisión. Espera su resultado antes de registrar otra.');
+      return;
+    }
+    if (deliveryNumber !== expected) {
+      alert(`Debes registrar la entrega ${expected} antes de continuar.`);
+      return;
+    }
+
+    try {
+      const body = {
+        projectId: selectedProject._id,
+        deliveryNumber,
+        title,
+        description,
+        observations,
+      };
+      const res = await api.submitDelivery(body);
+      if (res?.success) {
+        setActionMessage('Entrega registrada');
+        resetDeliveryFormForProject({ ...selectedProject, expectedDeliveryNumber: expected + 1 });
+        await refreshSelectedProject(selectedProject._id);
+      } else {
+        alert(res?.error || 'No se pudo registrar la entrega');
+      }
+    } catch (err) {
+      console.error('Submit delivery error', err);
+      alert('Error registrando entrega');
+    }
+  };
+
+  const handleReviewDelivery = async (delivery, action) => {
+    if (!canReviewDeliveries || !api.reviewDelivery || !delivery) return;
+    if (!reviewerIdentifier) {
+      alert('No se pudo identificar al revisor actual.');
+      return;
+    }
+
+    const verb = action === 'approve' ? 'aprobar' : 'rechazar';
+    if (!confirm(`¿Deseas ${verb} la entrega #${delivery.deliveryNumber}?`)) return;
+
+    const notesInput = (reviewNotes[delivery._id] || '').trim();
+    if (action === 'reject' && !notesInput) {
+      alert('Debes agregar un motivo para rechazar la entrega.');
+      return;
+    }
+
+    try {
+      const res = await api.reviewDelivery(delivery._id, reviewerIdentifier, action, notesInput);
+      if (res?.success) {
+        setActionMessage(`Entrega ${delivery.deliveryNumber} ${action === 'approve' ? 'aprobada' : 'rechazada'}`);
+        setReviewNotes((prev) => {
+          const next = { ...prev };
+          delete next[delivery._id];
+          return next;
+        });
+        await loadProjects();
+        await refreshSelectedProject(selectedProject._id);
+      } else {
+        alert(res?.error || 'No se pudo actualizar el estado de la entrega');
+      }
+    } catch (err) {
+      console.error('Review delivery error', err);
+      alert('Error revisando la entrega');
+    }
+  };
+
+  const handleUpdateInfo = async (event) => {
+    event.preventDefault();
+    if (!selectedProject || !api.updateProject) return;
+
+    try {
+      const allowed = [
+        'rowNumber',
+        'studentFirstNames',
+        'studentLastNames',
+        'studentDocument',
+        'member1FirstNames',
+        'member1LastNames',
+        'member2FirstNames',
+        'member2LastNames',
+        'semester',
+        'title',
+        'description',
+        'community',
+        'certificateNumber',
+        'registeredBy',
+      ];
+      const payload = allowed.reduce((acc, key) => {
+        if (infoForm[key] === undefined) return acc;
+        const nextValue = typeof infoForm[key] === 'string' ? infoForm[key].trim() : infoForm[key];
+        const currentValue = typeof selectedProject[key] === 'string' ? selectedProject[key].trim() : selectedProject[key];
+        if (nextValue === currentValue) return acc;
+        acc[key] = nextValue;
+        return acc;
+      }, {});
+
+      if (Object.keys(payload).length === 0) {
+        setActionMessage('No hay cambios para guardar');
+        return;
+      }
+      const res = await api.updateProject(selectedProject._id, payload);
+      if (res?.success) {
+        setActionMessage('Información actualizada');
+        await loadProjects();
+        await refreshSelectedProject(selectedProject._id);
+      } else {
+        alert(res?.error || 'No se pudo actualizar el proyecto');
+      }
+    } catch (err) {
+      console.error('Update project error', err);
+      alert('Error actualizando el proyecto');
+    }
+  };
+
+  const renderDeliveries = (project) => {
+    if (!project?.deliveries?.length) {
+      return <p className="text-sm text-gray-500">Sin entregas registradas aún.</p>;
+    }
+
+    return (
+      <div className="space-y-2">
+        {project.deliveries.map((delivery) => {
+          const statusMeta = getStatusMeta(delivery.status);
+          return (
+            <div key={delivery._id} className="p-3 rounded bg-gray-100 border border-gray-200">
+              <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="font-semibold">{p.projectCode} — {p.title || 'Untitled'}</h2>
-                  <p className="text-sm text-gray-600">{p.description}</p>
+                  <p className="text-sm font-semibold">{delivery.title || `Entrega ${delivery.deliveryNumber}`}</p>
+                  <p className="text-xs text-gray-500">Fase: {delivery.deliveryNumber}</p>
                 </div>
-                <div className="flex items-center space-x-4">
-                  <div className="text-sm text-gray-500">Progress: {p.progress || 0}%</div>
-                                    <div className="w-40">
-                                      <div className="text-sm text-gray-500 mb-1">Progress: {p.progress || 0}%</div>
-                                      <div className="w-full h-2 bg-gray-200 rounded overflow-hidden">
-                                        <div className="h-2 bg-green-500" style={{ width: `${p.progress || 0}%` }} />
-                                      </div>
-                                      <div className="text-xs text-gray-500 mt-1">{(p._approvedDeliveries || 0)}/3 entregas aprobadas</div>
-                                    </div>
+                <span className={`text-xs font-medium px-2 py-1 rounded uppercase tracking-wide ${statusMeta.pill}`}>
+                  {statusMeta.label}
+                </span>
+              </div>
+              {delivery.submittedAt && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Entregado: {format(new Date(delivery.submittedAt), 'dd/MM/yyyy HH:mm')}
+                </p>
+              )}
+              {delivery.reviewerId && (
+                <p className="text-xs text-gray-500">Revisado por: {delivery.reviewerId}</p>
+              )}
+              {(delivery.reviewComments || delivery.reviewerNotes) && (
+                <p className="text-xs text-gray-600 mt-2">Notas: {delivery.reviewComments || delivery.reviewerNotes}</p>
+              )}
+              {['in_review', 'pending'].includes(delivery.status) && canReviewDeliveries && (
+                <div className="mt-3 space-y-2 text-xs">
                   <div>
-                    {p.status ? (
-                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${p.status === 'approved' ? 'bg-green-100 text-green-800' : p.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>
-                        {p.status}
-                      </span>
-                    ) : (
-                      <span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">(none)</span>
-                    )}
+                    <label className="block mb-1 text-gray-600">Notas para la revisión</label>
+                    <textarea
+                      className="w-full border rounded px-2 py-1 text-sm"
+                      rows={2}
+                      value={reviewNotes[delivery._id] || ''}
+                      onChange={(e) =>
+                        setReviewNotes((prev) => ({
+                          ...prev,
+                          [delivery._id]: e.target.value,
+                        }))
+                      }
+                      placeholder="Observaciones que acompañarán la decisión"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700"
+                      onClick={() => handleReviewDelivery(delivery, 'approve')}
+                    >
+                      Aprobar entrega
+                    </button>
+                    <button
+                      type="button"
+                      className="px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                      onClick={() => handleReviewDelivery(delivery, 'reject')}
+                    >
+                      Rechazar
+                    </button>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderTimelineStatus = (project) => {
+    const deliveries = project.deliveries || [];
+    const totalDeliveries = project.totalDeliveries || 3;
+    const acceptedDeliveries = deliveries.filter((d) => d.status === 'approved').length;
+    const lastSubmission = deliveries
+      .filter((d) => d.submittedAt)
+      .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))[0];
+    const nextDueDate = project.timeline?.nextDueDate || project.nextDueDate || null;
+    const currentPhase = project.timeline?.currentPhase || project.expectedDeliveryNumber || acceptedDeliveries + 1;
+    const expired = project.status === 'expired';
+
+    const rows = [
+      { label: 'Estudiante', value: formatStudentName(project) || 'Sin registro' },
+      { label: 'Cédula', value: project.studentDocument || 'Sin indicar' },
+      { label: 'Semestre', value: project.semester || 'Sin definir' },
+      { label: 'Comunidad', value: project.community || 'Sin registro' },
+      { label: 'Registrado por', value: project.registeredBy || 'No indicado' },
+      { label: 'No.', value: project.rowNumber || 'Sin registro' },
+      { label: 'Código', value: project.rowNumber || project.projectCode || 'N/A' },
+      {
+        label: 'Integrantes',
+        value: [
+          [project.member1FirstNames, project.member1LastNames].filter(Boolean).join(' '),
+          [project.member2FirstNames, project.member2LastNames].filter(Boolean).join(' '),
+        ]
+          .filter(Boolean)
+          .join(' · ') || 'Sin registro',
+      },
+      {
+        label: 'Aprobación anteproyecto',
+        value: project.anteprojectApprovedAt ? format(new Date(project.anteprojectApprovedAt), 'dd/MM/yyyy') : 'Pendiente',
+      },
+      { label: 'Aprobado por', value: project.approvedBy || 'Pendiente' },
+      {
+        label: 'Próxima fecha límite',
+        value: nextDueDate ? format(new Date(nextDueDate), 'dd/MM/yyyy') : 'Sin definir',
+      },
+      { label: 'Fase actual', value: currentPhase ? `Entrega ${currentPhase}` : 'No iniciada' },
+      { label: 'Entregas completadas', value: `${acceptedDeliveries} / ${totalDeliveries}` },
+      {
+        label: 'Última entrega',
+        value: lastSubmission ? format(new Date(lastSubmission.submittedAt), 'dd/MM/yyyy HH:mm') : 'Sin registro',
+      },
+      { label: 'Estado general', value: project.status || 'N/A' },
+    ];
+
+    return (
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+        {rows.map((row) => (
+          <div key={row.label} className="flex flex-col p-2 rounded border" style={{ borderColor: expired ? '#dc2626' : '#d1d5db' }}>
+            <dt className="font-semibold text-gray-600">{row.label}</dt>
+            <dd className={expired ? 'text-red-600 font-semibold' : 'text-gray-900'}>{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+    );
+  };
+
+  const renderCreateButton = (
+    <button
+      onClick={openCreateModal}
+      className="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 transition"
+    >
+      Nuevo proyecto
+    </button>
+  );
+
+  const isAnteprojectApproved = Boolean(selectedProject?.anteprojectApprovedAt);
+  const expectedPhase = selectedProject?.expectedDeliveryNumber || 1;
+  const blockingDelivery = selectedProject?.deliveries?.find(
+    (d) => d.deliveryNumber === expectedPhase && (d.status === 'pending' || d.status === 'in_review')
+  );
+  const isDeliveryWindowLocked = Boolean(blockingDelivery);
+
+  return (
+    <div className="p-6 space-y-6">
+      <header className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Proyectos</h1>
+          <p className="text-sm text-gray-500">Monitorea cada entrega y valida el timer de 3 meses.</p>
+        </div>
+        {renderCreateButton}
+      </header>
+
+      {loading ? (
+        <p className="text-gray-500">Cargando proyectos...</p>
+      ) : projects.length === 0 ? (
+        <div className="border-2 border-dashed rounded p-8 text-center text-gray-500">No hay proyectos registrados.</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {projects.map((project) => (
+            <article key={project._id} className="p-4 bg-white rounded shadow-sm border border-gray-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold">{project.title || 'Sin título'}</h2>
+                  <p className="text-sm text-gray-500">Código: {project.rowNumber || project.projectCode || 'N/A'}</p>
+                </div>
+                <button className="text-sm text-primary-600 hover:underline" onClick={() => openEdit(project)}>
+                  Ver detalles
+                </button>
+              </div>
+              <div className="mt-3">{renderTimelineStatus(project)}</div>
+              <div className="mt-4">
+                {(() => {
+                  const stats = getCompletionStats(project);
+                  return (
+                    <>
+                      <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                        <span>Avance general</span>
+                        <span>{stats.percentage}%</span>
+                      </div>
+                      <div className="h-2 bg-gray-200 rounded">
+                        <div className="h-full bg-primary-600 rounded" style={{ width: `${stats.percentage}%` }} />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {stats.accepted} entregas aprobadas · {stats.inReview} en revisión
+                      </p>
+                    </>
+                  );
+                })()}
+              </div>
+            </article>
           ))}
         </div>
       )}
 
       {showCreate && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-            <h2 className="text-2xl font-bold mb-4">Create Project</h2>
-            <form onSubmit={handleCreate}>
-              <div className="mb-3">
-                <label className="block text-sm mb-1">Project Code</label>
-                <input required value={form.projectCode} onChange={e => setForm({...form, projectCode: e.target.value})} className="w-full border p-2 rounded" />
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-semibold">Registrar proyecto</h3>
+              <button onClick={closeCreateModal} className="text-gray-500 hover:text-gray-700">
+                ×
+              </button>
+            </div>
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">No.</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2"
+                    value={projectForm.rowNumber}
+                    onChange={(e) => setProjectForm({ ...projectForm, rowNumber: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Registrado por</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2 bg-gray-100"
+                    value={projectForm.registeredBy}
+                    readOnly
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Capturamos tu usuario para dejar precedentes.</p>
+                </div>
               </div>
-              <div className="mb-3">
-                <label className="block text-sm mb-1">Title</label>
-                <input value={form.title} onChange={e => setForm({...form, title: e.target.value})} className="w-full border p-2 rounded" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Nombres</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2"
+                    value={projectForm.studentFirstNames}
+                    onChange={(e) => setProjectForm({ ...projectForm, studentFirstNames: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Apellidos</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2"
+                    value={projectForm.studentLastNames}
+                    onChange={(e) => setProjectForm({ ...projectForm, studentLastNames: e.target.value })}
+                  />
+                </div>
               </div>
-              <div className="mb-4">
-                <label className="block text-sm mb-1">Description</label>
-                <textarea value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="w-full border p-2 rounded" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Cédula</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2"
+                    value={projectForm.studentDocument}
+                    onChange={(e) => setProjectForm({ ...projectForm, studentDocument: e.target.value })}
+                    placeholder="V-30.000.000"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Semestre</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2"
+                    value={projectForm.semester}
+                    onChange={(e) => setProjectForm({ ...projectForm, semester: e.target.value })}
+                    placeholder="8vo. SEMESTRE"
+                  />
+                </div>
               </div>
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setShowCreate(false)} className="px-3 py-1 border rounded">Cancel</button>
-                <button type="submit" className="px-3 py-1 bg-blue-600 text-white rounded">Create</button>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Título TC</label>
+                <input
+                  type="text"
+                  className="w-full border rounded px-3 py-2"
+                  value={projectForm.title}
+                  onChange={(e) => setProjectForm({ ...projectForm, title: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Descripción (opcional)</label>
+                <textarea
+                  className="w-full border rounded px-3 py-2"
+                  value={projectForm.description}
+                  onChange={(e) => setProjectForm({ ...projectForm, description: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Comunidad</label>
+                <textarea
+                  className="w-full border rounded px-3 py-2"
+                  value={projectForm.community}
+                  onChange={(e) => setProjectForm({ ...projectForm, community: e.target.value })}
+                  placeholder="Consejo Comunal, sector, parroquia..."
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Integrante 1 - Nombres</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2"
+                    value={projectForm.member1FirstNames}
+                    onChange={(e) => setProjectForm({ ...projectForm, member1FirstNames: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Integrante 1 - Apellidos</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2"
+                    value={projectForm.member1LastNames}
+                    onChange={(e) => setProjectForm({ ...projectForm, member1LastNames: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Integrante 2 - Nombres</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2"
+                    value={projectForm.member2FirstNames}
+                    onChange={(e) => setProjectForm({ ...projectForm, member2FirstNames: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Integrante 2 - Apellidos</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2"
+                    value={projectForm.member2LastNames}
+                    onChange={(e) => setProjectForm({ ...projectForm, member2LastNames: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end space-x-3">
+                <button type="button" className="px-4 py-2 text-sm" onClick={closeCreateModal}>
+                  Cancelar
+                </button>
+                <button type="submit" className="px-4 py-2 bg-primary-600 text-white rounded">
+                  Guardar
+                </button>
               </div>
             </form>
           </div>
@@ -242,61 +747,290 @@ export default function ProjectsPage({ user }) {
       )}
 
       {selectedProject && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg">
-            <h2 className="text-2xl font-bold mb-4">Edit Project</h2>
-            <form onSubmit={handleUpdate}>
-              <div className="mb-3">
-                <label className="block text-sm mb-1">Project Code</label>
-                <input required value={selectedProject.projectCode || ''} onChange={e => setSelectedProject({...selectedProject, projectCode: e.target.value})} className="w-full border p-2 rounded" />
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 px-2 sm:px-0">
+          <div className="bg-white w-full sm:max-w-4xl h-[90vh] sm:h-auto max-h-[90vh] sm:max-h-[85vh] rounded-t-2xl sm:rounded-2xl shadow-xl p-4 sm:p-6 overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-2xl font-semibold">{selectedProject.title || 'Sin título'}</h3>
+                <p className="text-sm text-gray-500">Código: {selectedProject.rowNumber || selectedProject.projectCode || 'N/A'}</p>
               </div>
-              <div className="mb-3">
-                <label className="block text-sm mb-1">Title</label>
-                <input value={selectedProject.title || ''} onChange={e => setSelectedProject({...selectedProject, title: e.target.value})} className="w-full border p-2 rounded" />
-              </div>
-              <div className="mb-3">
-                <label className="block text-sm mb-1">Description</label>
-                <textarea value={selectedProject.description || ''} onChange={e => setSelectedProject({...selectedProject, description: e.target.value})} className="w-full border p-2 rounded" />
-              </div>
-              <div className="mb-4">
-                <label className="block text-sm mb-1">Status</label>
-                <div className="p-2 border rounded bg-gray-50">{selectedProject.status || '(none)'}</div>
-              </div>
-              <div className="mb-4">
-                <label className="block text-sm mb-1">Entregas</label>
-                <div className="space-y-2 max-h-48 overflow-auto p-2 border rounded bg-gray-50">
-                  {selectedProject._deliveries && selectedProject._deliveries.length > 0 ? (
-                    selectedProject._deliveries.map(d => (
-                      <div key={d._id || `${d.projectId}-${d.deliveryNumber}`} className="p-2 bg-white rounded shadow-sm">
-                        <div className="flex justify-between">
-                          <div>
-                            <div className="font-medium">Entrega {d.deliveryNumber}</div>
-                            <div className="text-sm text-gray-600">{d.deliveryDate ? new Date(d.deliveryDate).toLocaleDateString() : 'Sin fecha'}</div>
-                          </div>
-                          <div className="text-sm">
-                            <div className={`px-2 py-1 rounded-full text-xs ${d.status === 'approved' ? 'bg-green-100 text-green-800' : d.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>{d.status}</div>
-                          </div>
-                        </div>
-                        {d.observations && <div className="text-sm text-gray-700 mt-2">Observaciones: {d.observations}</div>}
+              <button onClick={closeEdit} className="text-xl text-gray-400 hover:text-gray-600">
+                ×
+              </button>
+            </div>
+            {actionMessage && <p className="mb-4 text-sm text-green-600">{actionMessage}</p>}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <section className="space-y-4">
+                <article className="p-4 rounded border border-gray-200 bg-gray-50">
+                  <h4 className="text-sm font-semibold text-gray-600">Info del proyecto</h4>
+                  <form className="space-y-3" onSubmit={handleUpdateInfo}>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs text-gray-500">No.</label>
+                        <input
+                          type="text"
+                          className="w-full border rounded px-3 py-2"
+                          value={infoForm.rowNumber}
+                          onChange={(e) => setInfoForm({ ...infoForm, rowNumber: e.target.value })}
+                        />
                       </div>
-                    ))
-                  ) : (
-                    <div className="text-sm text-gray-600">No hay entregas registradas.</div>
-                  )}
-                </div>
-              </div>
-              <div className="flex justify-between items-center">
-                <div className="space-x-2">
-                  <button type="button" onClick={handleApprove} className="px-3 py-1 bg-green-600 text-white rounded">Approve</button>
-                  <button type="button" onClick={handleReject} className="px-3 py-1 bg-red-600 text-white rounded">Reject</button>
-                </div>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => handleDelete(selectedProject._id)} className="px-3 py-1 border rounded text-red-600">Delete</button>
-                  <button type="button" onClick={closeEdit} className="px-3 py-1 border rounded">Cancel</button>
-                  <button type="submit" className="px-3 py-1 bg-blue-600 text-white rounded">Save</button>
-                </div>
-              </div>
-            </form>
+                      <div>
+                        <label className="block text-xs text-gray-500">Registrado por</label>
+                        <input
+                          type="text"
+                          className="w-full border rounded px-3 py-2 bg-gray-100"
+                          value={infoForm.registeredBy}
+                          readOnly
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs text-gray-500">Nombres</label>
+                        <input
+                          type="text"
+                          className="w-full border rounded px-3 py-2"
+                          value={infoForm.studentFirstNames}
+                          onChange={(e) => setInfoForm({ ...infoForm, studentFirstNames: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500">Apellidos</label>
+                        <input
+                          type="text"
+                          className="w-full border rounded px-3 py-2"
+                          value={infoForm.studentLastNames}
+                          onChange={(e) => setInfoForm({ ...infoForm, studentLastNames: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs text-gray-500">Integrante 1 - Nombres</label>
+                        <input
+                          type="text"
+                          className="w-full border rounded px-3 py-2"
+                          value={infoForm.member1FirstNames}
+                          onChange={(e) => setInfoForm({ ...infoForm, member1FirstNames: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500">Integrante 1 - Apellidos</label>
+                        <input
+                          type="text"
+                          className="w-full border rounded px-3 py-2"
+                          value={infoForm.member1LastNames}
+                          onChange={(e) => setInfoForm({ ...infoForm, member1LastNames: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs text-gray-500">Integrante 2 - Nombres</label>
+                        <input
+                          type="text"
+                          className="w-full border rounded px-3 py-2"
+                          value={infoForm.member2FirstNames}
+                          onChange={(e) => setInfoForm({ ...infoForm, member2FirstNames: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500">Integrante 2 - Apellidos</label>
+                        <input
+                          type="text"
+                          className="w-full border rounded px-3 py-2"
+                          value={infoForm.member2LastNames}
+                          onChange={(e) => setInfoForm({ ...infoForm, member2LastNames: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs text-gray-500">Cédula</label>
+                        <input
+                          type="text"
+                          className="w-full border rounded px-3 py-2"
+                          value={infoForm.studentDocument}
+                          onChange={(e) => setInfoForm({ ...infoForm, studentDocument: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500">Semestre</label>
+                        <input
+                          type="text"
+                          className="w-full border rounded px-3 py-2"
+                          value={infoForm.semester}
+                          onChange={(e) => setInfoForm({ ...infoForm, semester: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500">Título TC</label>
+                      <input
+                        type="text"
+                        className="w-full border rounded px-3 py-2"
+                        value={infoForm.title}
+                        onChange={(e) => setInfoForm({ ...infoForm, title: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500">Descripción</label>
+                      <textarea
+                        className="w-full border rounded px-3 py-2"
+                        value={infoForm.description}
+                        onChange={(e) => setInfoForm({ ...infoForm, description: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500">Comunidad</label>
+                      <textarea
+                        className="w-full border rounded px-3 py-2"
+                        value={infoForm.community}
+                        onChange={(e) => setInfoForm({ ...infoForm, community: e.target.value })}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs text-gray-500">Número de certificado</label>
+                        <input
+                          type="text"
+                          className="w-full border rounded px-3 py-2"
+                          value={infoForm.certificateNumber}
+                          onChange={(e) => setInfoForm({ ...infoForm, certificateNumber: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center pt-2">
+                      <button type="button" className="text-sm text-red-500" onClick={() => handleDelete(selectedProject._id)}>
+                        Eliminar proyecto
+                      </button>
+                      <button type="submit" className="px-3 py-2 bg-primary-600 text-white text-sm rounded">
+                        Guardar cambios
+                      </button>
+                    </div>
+                  </form>
+                </article>
+                {!isAnteprojectApproved ? (
+                  <article className="p-4 rounded border border-gray-200 bg-white">
+                    <h4 className="text-sm font-semibold text-gray-600">Aprobación anteproyecto</h4>
+                    <p className="text-xs text-gray-500 mb-2">Configura el punto de partida del timer.</p>
+                    <label className="block text-xs text-gray-500">Fecha de aprobación</label>
+                    <input
+                      type="date"
+                      className="w-full border rounded px-3 py-2"
+                      value={anteDate}
+                      onChange={(e) => setAnteDate(e.target.value)}
+                    />
+                    <button onClick={handleApproveAnteproject} className="mt-3 w-full px-3 py-2 bg-green-600 text-white rounded">
+                      Aprobar anteproyecto
+                    </button>
+                  </article>
+                ) : (
+                  <article className="p-4 rounded border border-gray-200 bg-white">
+                    <h4 className="text-sm font-semibold text-gray-600">Anteproyecto aprobado</h4>
+                    <p className="text-xs text-gray-500">Fecha: {format(new Date(selectedProject.anteprojectApprovedAt), 'dd/MM/yyyy')}</p>
+                    <p className="text-xs text-gray-500">Aprobado por: {selectedProject.approvedBy || 'Sin registro'}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Próximo deadline: {selectedProject.timeline?.nextDueDate ? format(new Date(selectedProject.timeline.nextDueDate), 'dd/MM/yyyy') : 'N/A'}
+                    </p>
+                  </article>
+                )}
+                {isAnteprojectApproved && (
+                  <article className="p-4 rounded border border-gray-200 bg-white">
+                    <h4 className="text-sm font-semibold text-gray-600">Registrar entrega</h4>
+                    <p className="text-xs text-gray-500 mb-2">Solo se permite siguiendo la secuencia del timer.</p>
+                    <p className="text-xs text-blue-600 mb-2">Entrega permitida ahora: #{expectedPhase}</p>
+                    {isDeliveryWindowLocked && (
+                      <p className="text-xs text-red-600 mb-2">
+                        Ya existe una entrega en revisión para esta fase. Espera el resultado para registrar la siguiente.
+                      </p>
+                    )}
+                    <select
+                      className="w-full border rounded px-3 py-2"
+                      value={deliveryForm.deliveryNumber}
+                      onChange={(e) => setDeliveryForm({ ...deliveryForm, deliveryNumber: e.target.value })}
+                      disabled={isDeliveryWindowLocked}
+                    >
+                      <option value="">Selecciona la fase</option>
+                      <option value="1" disabled={expectedPhase !== 1}>Primera entrega</option>
+                      <option value="2" disabled={expectedPhase !== 2}>Segunda entrega</option>
+                      <option value="3" disabled={expectedPhase !== 3}>Tercera entrega</option>
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Título de la entrega"
+                      className="mt-2 w-full border rounded px-3 py-2"
+                      value={deliveryForm.title}
+                      onChange={(e) => setDeliveryForm({ ...deliveryForm, title: e.target.value })}
+                      disabled={isDeliveryWindowLocked}
+                    />
+                    <textarea
+                      placeholder="Descripción"
+                      className="mt-2 w-full border rounded px-3 py-2"
+                      value={deliveryForm.description}
+                      onChange={(e) => setDeliveryForm({ ...deliveryForm, description: e.target.value })}
+                      disabled={isDeliveryWindowLocked}
+                    />
+                    <button
+                      onClick={handleSubmitDelivery}
+                      disabled={isDeliveryWindowLocked}
+                      className={`mt-3 w-full px-3 py-2 rounded text-white ${
+                        isDeliveryWindowLocked ? 'bg-primary-300 cursor-not-allowed' : 'bg-primary-600 hover:bg-primary-700'
+                      }`}
+                    >
+                      Registrar entrega
+                    </button>
+                  </article>
+                )}
+              </section>
+              <section className="lg:col-span-2 space-y-6">
+                <article className="p-4 border rounded bg-white">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-sm font-semibold text-gray-600">Estado del timer</h4>
+                    <span className="text-sm text-gray-500">
+                      Próximo deadline: {selectedProject.timeline?.nextDueDate ? format(new Date(selectedProject.timeline.nextDueDate), 'dd/MM/yyyy') : 'N/A'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {[1, 2, 3].map((phase) => {
+                      const delivery = selectedProject.deliveries?.find((d) => d.deliveryNumber === phase);
+                      const isCurrent = (selectedProject.expectedDeliveryNumber || 1) === phase && !delivery;
+                      const isCompleted = delivery?.status === 'approved';
+                      const expired = selectedProject.status === 'expired';
+                      const statusMeta = getStatusMeta(delivery?.status);
+
+                      return (
+                        <div
+                          key={phase}
+                          className={`p-4 border rounded ${
+                            isCompleted
+                              ? 'bg-green-50 border-green-200'
+                              : isCurrent
+                                ? 'bg-yellow-50 border-yellow-200'
+                                : 'bg-gray-50 border-gray-200'
+                          } ${expired ? 'opacity-60' : ''}`}
+                        >
+                          <p className="text-xs text-gray-500">Entrega {phase}</p>
+                          <p className="text-sm font-semibold">{delivery ? delivery.title : 'Sin registro'}</p>
+                          <p className="text-xs text-gray-500">
+                            {delivery?.submittedAt ? format(new Date(delivery.submittedAt), 'dd/MM/yyyy') : 'Pendiente'}
+                          </p>
+                          {delivery?.status && (
+                            <span className={`mt-2 inline-flex px-2 py-1 rounded text-xs uppercase tracking-wide ${statusMeta.pill}`}>
+                              {statusMeta.label}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </article>
+                <article className="p-4 border rounded bg-white">
+                  <h4 className="text-sm font-semibold text-gray-600 mb-3">Historial de entregas</h4>
+                  {renderDeliveries(selectedProject)}
+                </article>
+              </section>
+            </div>
           </div>
         </div>
       )}

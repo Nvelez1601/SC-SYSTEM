@@ -11,6 +11,7 @@ class DatabaseConnection {
     }
     
     this.db = {};
+    this.initialized = false;
     DatabaseConnection.instance = this;
   }
 
@@ -22,6 +23,10 @@ class DatabaseConnection {
   }
 
   async initialize() {
+    if (this.initialized) {
+      return this.db;
+    }
+
     try {
       // Ensure data directory exists
       if (!fs.existsSync(config.database.path)) {
@@ -63,6 +68,8 @@ class DatabaseConnection {
 
       // Seed Super Admin user if not exists
       await this.seedSuperAdmin();
+
+      this.initialized = true;
 
       return this.db;
     } catch (error) {

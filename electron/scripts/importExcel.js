@@ -1,133 +1,276 @@
 const XLSX = require('xlsx');
-const DatabaseConnection = require('../database/connection');
 const path = require('path');
+const DatabaseConnection = require('../database/connection');
 const ProjectRepository = require('../database/repositories/ProjectRepository');
-const DeliveryRepository = require('../database/repositories/DeliveryRepository');
+const ProjectTimelineService = require('../core/services/ProjectTimelineService');
 
-function normalizeHeader(str) {
-  if (!str && str !== 0) return '';
-  return str.toString().trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+function normalizeHeader(value) {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  return value
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ');
 }
 
+function isLikelyHeaderRow(row = []) {
+  if (!Array.isArray(row) || row.length === 0) return false;
+  const normalized = row.map((cell) => normalizeHeader(cell));
+  const tokens = ['nombres', 'apellidos', 'cedula', 'semestre', 'titulo tc', 'comunidad'];
+  const matches = tokens.filter((token) => normalized.some((cell) => cell.includes(token)));
+  return matches.length >= 3;
+}
+
+function extractRows(sheet) {
+  const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  if (!rawRows || rawRows.length === 0) {
+    return [];
+  }
+
+  let headerIndex = rawRows.findIndex((row) => isLikelyHeaderRow(row));
+  if (headerIndex === -1) {
+    headerIndex = 0;
+  }
+
+  const headerRow = rawRows[headerIndex].map((value, idx) => {
+    const cellValue = value !== undefined && value !== null ? String(value).trim() : '';
+    return cellValue || `__col_${idx}`;
+  });
+
+  const rows = [];
+  for (let i = headerIndex + 1; i < rawRows.length; i++) {
+    const row = rawRows[i];
+    if (!row) continue;
+    const hasContent = row.some((cell) => cell !== undefined && cell !== null && String(cell).trim() !== '');
+    if (!hasContent) continue;
+
+    const obj = {};
+    headerRow.forEach((headerCell, idx) => {
+      obj[headerCell] = row[idx] !== undefined ? row[idx] : '';
+    });
+    rows.push(obj);
+  }
+
+  return rows;
+}
+
 function mapRow(row) {
-  const mapped = {};
-  const keys = Object.keys(row);
-  const firstKeyNormalized = normalizeHeader(keys[0] || '');
+  if (!row) return {};
 
-  if (firstKeyNormalized.startsWith('__empty') || firstKeyNormalized === '') {
-    const vals = Object.values(row || {});
-    mapped.studentName = `${(vals[0] || '').toString().trim()} ${(vals[1] || '').toString().trim()}`.trim();
-    mapped.studentId = vals[2] || '';
-    mapped.semester = vals[3] || '';
-    mapped.title = vals[4] || mapped.studentName || '';
-    mapped.community = vals[5] || '';
-    mapped.deliveryDate = vals[6] || vals[7] || '';
-    mapped.cutoffDate = vals[7] || vals[8] || '';
-    mapped.submitSignature = vals[8] || '';
-    mapped.cutoffSignature = vals[9] || '';
-    mapped.observations = vals[10] || '';
-  } else {
-    for (const key of keys) {
-      const nk = normalizeHeader(key);
-      const val = row[key];
+  const normalized = {};
+  Object.entries(row).forEach(([key, value], index) => {
+    const baseKey = normalizeHeader(key) || `__col_${index}`;
+    let finalKey = baseKey;
+    let counter = 1;
+    while (normalized.hasOwnProperty(finalKey)) {
+      finalKey = `${baseKey}__${counter++}`;
+    }
+    normalized[finalKey] = value;
+  });
 
-      if (nk === 'id' || nk === 'codigo' || nk === 'projectcode' || nk === 'proyecto') mapped.projectCode = val;
-      else if (nk.includes('nombre')) mapped.studentName = val;
-      else if (nk.includes('cedula') || nk.includes('documento')) mapped.studentId = val;
-      else if (nk.includes('semestre')) mapped.semester = val;
-      else if (nk.includes('titulo') || nk.includes('servicio')) mapped.title = val;
-      else if (nk.includes('comunidad')) mapped.community = val;
-      else if (nk.includes('fechas de entrega') || nk.includes('fecha de entrega') || nk.includes('fecha_entrega') || nk === 'fecha') mapped.deliveryDate = val;
-      else if (nk.includes('fecha de caducidad') || nk.includes('caducidad') || nk.includes('corte')) mapped.cutoffDate = val;
-      else if (nk.includes('firma de entrega') || nk.includes('firma_entrega')) mapped.submitSignature = val;
-      else if (nk.includes('firma de corte') || nk.includes('firma_corte')) mapped.cutoffSignature = val;
-      else if (nk.includes('observacion') || nk.includes('observaciones')) mapped.observations = val;
-      else mapped[nk] = val;
+  const pick = (candidates = []) => {
+    for (const key of candidates) {
+      if (normalized[key] !== undefined && normalized[key] !== '') {
+        return normalized[key];
+      }
+    }
+    return '';
+  };
+
+  return {
+    rowNumber: pick(['no.', 'no', 'numero', '__col_0']),
+    firstNames: pick(['nombres']),
+    lastNames: pick(['apellidos']),
+    studentDocument: pick(['cedula', 'cédula', 'cedula.', 'cedula estudiante', 'cedula de identidad', 'cedula__1']),
+    semester: pick(['semestre', 'semestre academico', 'semestre actual']),
+    title: pick(['titulo tc', 'titulo tc.', 'titulo tc__1', 'titulo', 'titulo proyecto']),
+    community: pick(['comunidad', 'comuna', 'comunidad.', 'comunidad__1']),
+    certificateNumber: pick(['numero de certificado', 'número de certificado', 'numero de certificado.']),
+  };
+}
+
+function sanitizeText(value) {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  return value.toString().replace(/\s+/g, ' ').trim();
+}
+
+function sanitizeDocument(value) {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  return value.toString().trim();
+}
+
+function normalizeStudentId(value) {
+  if (!value) return '';
+  return value.toString().toUpperCase().replace(/[^0-9A-Z-]/g, '');
+}
+
+function parseDateValue(value) {
+  if (!value && value !== 0) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+  if (typeof value === 'number') {
+    const millis = Math.round((value - 25569) * 86400 * 1000);
+    const parsed = new Date(millis);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  const text = value.toString().trim();
+  if (!text) return null;
+  const slashMatch = text.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (slashMatch) {
+    const day = Number(slashMatch[1]);
+    const month = Number(slashMatch[2]) - 1;
+    const year = Number(slashMatch[3].length === 2 ? `20${slashMatch[3]}` : slashMatch[3]);
+    const parsed = new Date(Date.UTC(year, month, day));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function hasMeaningfulData(mapped) {
+  return Boolean(
+    sanitizeText(mapped.firstNames) ||
+      sanitizeText(mapped.lastNames) ||
+      sanitizeDocument(mapped.studentDocument) ||
+      sanitizeText(mapped.title) ||
+      sanitizeText(mapped.community)
+  );
+}
+
+function deriveProjectCode({ rowNumber }) {
+  return sanitizeText(rowNumber);
+}
+
+function buildLookupQueries(payload) {
+  const queries = [];
+  if (payload.certificateNumber) queries.push({ certificateNumber: payload.certificateNumber });
+  if (payload.projectCode) queries.push({ projectCode: payload.projectCode });
+  if (payload.rowNumber) queries.push({ rowNumber: payload.rowNumber });
+  if (payload.studentDocument) queries.push({ studentDocument: payload.studentDocument });
+  if (payload.studentId) queries.push({ studentId: payload.studentId });
+  return queries;
+}
+
+async function upsertProject(mapped, context) {
+  const studentFirstNames = sanitizeText(mapped.firstNames);
+  const studentLastNames = sanitizeText(mapped.lastNames);
+  const studentDocument = sanitizeDocument(mapped.studentDocument);
+  const studentId = normalizeStudentId(studentDocument);
+  const semester = sanitizeText(mapped.semester);
+  const community = sanitizeText(mapped.community);
+  const certificateNumber = sanitizeText(mapped.certificateNumber);
+  const rowNumber = sanitizeText(mapped.rowNumber);
+
+  const titleCandidate = sanitizeText(mapped.title);
+  const fallbackName = [studentLastNames, studentFirstNames].filter(Boolean).join(' / ');
+  const title = titleCandidate || fallbackName || 'Proyecto sin título';
+  const studentName = fallbackName || studentDocument;
+  const projectCode = deriveProjectCode({ rowNumber });
+
+  const payload = {
+    title,
+    rowNumber,
+    studentName,
+    studentFirstNames,
+    studentLastNames,
+    studentDocument,
+    studentId,
+    member1FirstNames: '',
+    member1LastNames: '',
+    member2FirstNames: '',
+    member2LastNames: '',
+    semester,
+    community,
+    certificateNumber,
+    projectCode,
+    approvedBy: context.registrant,
+    registeredBy: context.registrant,
+  };
+
+  const queries = buildLookupQueries(payload);
+  let existing = null;
+  for (const query of queries) {
+    if (!query || Object.keys(query).length === 0) continue;
+    const found = await context.projectRepo.findOne(query);
+    if (found) {
+      existing = found;
+      break;
     }
   }
-  return mapped;
-}
 
-function parseDate(value) {
-  if (!value && value !== 0) return null;
-  // If already a Date
-  if (value instanceof Date) return value;
-  // If Excel serial date (number), convert from days since 1899-12-31
-  if (typeof value === 'number') {
-    const dt = new Date(Math.round((value - 25569) * 86400 * 1000));
-    return dt;
+  if (!existing) {
+    const defaults = context.timelineService.buildInitialFields({ anteprojectApprovedAt: anteprojectApprovedAt || undefined });
+    await context.projectRepo.create({
+      ...defaults,
+      ...payload,
+      totalDeliveries: context.timelineService.totalDeliveries,
+    });
+    context.results.createdProjects += 1;
+    return;
   }
-  // Try native parse
-  const d = new Date(value);
-  return isNaN(d.getTime()) ? null : d;
+
+  const updates = {};
+  Object.entries(payload).forEach(([key, value]) => {
+    if (!value) return;
+    if (!existing[key] || existing[key] !== value) {
+      updates[key] = value;
+    }
+  });
+
+  if (!existing.registeredBy) {
+    updates.registeredBy = context.registrant;
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await context.projectRepo.update(existing._id, updates);
+    context.results.updatedProjects += 1;
+  } else {
+    context.results.skippedRows += 1;
+  }
 }
 
-async function importExcel(filePath) {
+async function importExcel(filePath, options = {}) {
   const workbook = XLSX.readFile(filePath, { cellDates: true });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  const rows = extractRows(sheet);
 
   const db = DatabaseConnection.getInstance();
   await db.initialize();
   const projectRepo = new ProjectRepository(db.getDatabase('projects'));
-  const deliveryRepo = new DeliveryRepository(db.getDatabase('deliveries'));
+  const timelineService = new ProjectTimelineService();
 
-  const results = { createdProjects: 0, createdDeliveries: 0, errors: [] };
+  const registrant = sanitizeText(options.requestedBy) || 'import-excel';
+  const results = {
+    createdProjects: 0,
+    updatedProjects: 0,
+    skippedRows: 0,
+    createdDeliveries: 0,
+    errors: [],
+  };
 
   for (const row of rows) {
     try {
-      const m = mapRow(row);
-
-      let projectCode = m.projectCode || (m.studentId ? `${m.studentId}-${(m.title || '').toString().slice(0, 30)}` : null);
-
-      let project = null;
-      if (projectCode) project = await projectRepo.findByProjectCode(projectCode);
-      if (!project && m.studentId) {
-        const projects = await projectRepo.findByStudent(m.studentId);
-        project = projects && projects[0];
+      const mapped = mapRow(row);
+      if (!hasMeaningfulData(mapped)) {
+        results.skippedRows += 1;
+        continue;
       }
-
-      if (!project) {
-        const generatedCode = `AUTO-${(m.studentId || 'X').toString().replace(/[^a-zA-Z0-9_-]/g, '')}-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
-        const toCreate = {
-          projectCode: projectCode || generatedCode,
-          title: m.title || m.studentName || 'Sin titulo',
-          studentId: m.studentId || null,
-          studentName: m.studentName || null,
-          semester: m.semester || null,
-          community: m.community || null,
-          endDate: m.cutoffDate ? parseDate(m.cutoffDate) : null,
-          progress: 0,
-        };
-
-        project = await projectRepo.create(toCreate);
-        results.createdProjects++;
-      }
-
-      const lastDelivery = await deliveryRepo.getLastDelivery(project._id);
-      const deliveryNumber = lastDelivery ? (lastDelivery.deliveryNumber || 0) + 1 : 1;
-
-      const deliveryData = {
-        projectId: project._id,
-        deliveryNumber,
-        deliveryDate: m.deliveryDate ? parseDate(m.deliveryDate) : null,
-        dueDate: m.cutoffDate ? parseDate(m.cutoffDate) : null,
-        submitSignature: m.submitSignature || null,
-        cutoffSignature: m.cutoffSignature || null,
-        observations: m.observations || null,
-        status: m.cutoffSignature ? 'completed' : (m.submitSignature ? 'submitted' : 'pending'),
-      };
-
-      // Avoid creating duplicate deliveries for same project & deliveryDate
-      const existingDelivery = await deliveryRepo.findOne({ projectId: project._id, deliveryDate: deliveryData.deliveryDate });
-      if (!existingDelivery) {
-        await deliveryRepo.create(deliveryData);
-        results.createdDeliveries++;
-      }
-    } catch (err) {
-      results.errors.push({ row, error: err && err.message ? err.message : String(err) });
+      await upsertProject(mapped, { projectRepo, timelineService, registrant, results });
+    } catch (error) {
+      results.errors.push({
+        row,
+        message: error && error.message ? error.message : String(error),
+      });
     }
   }
 
@@ -145,24 +288,27 @@ async function recordImportHistory(filePath, results) {
       importedAt: new Date(),
       summary: {
         createdProjects: results.createdProjects || 0,
+        updatedProjects: results.updatedProjects || 0,
         createdDeliveries: results.createdDeliveries || 0,
         errors: (results.errors && results.errors.length) || 0,
       },
       raw: results,
     };
 
-    importsDb.insert(record, (err, newDoc) => {
-      if (err) console.error('Failed to record import history', err);
+    importsDb.insert(record, (err) => {
+      if (err) {
+        console.error('Failed to record import history', err);
+      }
     });
   } catch (err) {
     console.error('recordImportHistory error', err);
   }
 }
 
-module.exports = async function(filePath) {
-  const res = await importExcel(filePath);
+module.exports = async function(filePath, options = {}) {
+  const res = await importExcel(filePath, options);
   await recordImportHistory(filePath, res.results || { createdProjects: 0, createdDeliveries: 0, errors: [] });
   return res;
 };
 
-module.exports = importExcel;
+module.exports.importExcel = importExcel;

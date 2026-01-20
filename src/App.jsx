@@ -118,8 +118,6 @@ function getDashboardRoute(role) {
       return '/admin';
     case 'reviewer':
       return '/reviewer';
-    case 'student':
-      return '/student';
     default:
       return '/login';
   }

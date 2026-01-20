@@ -67,7 +67,7 @@ export default function ImportPage() {
 
       <div className="bg-white p-4 rounded shadow mb-4">
         <p className="text-sm text-gray-600 mb-2">Selecciona el archivo Excel exportado por la universidad.</p>
-        <input type="file" accept=".xlsx,.xls" onChange={handleFileChange} className="mb-3" />
+        <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileChange} className="mb-3" />
         <div className="flex items-center space-x-2">
           <button onClick={handleImport} disabled={loading} className="px-3 py-1 bg-blue-600 text-white rounded">{loading ? 'Importando...' : 'Importar'}</button>
           <div className="text-sm text-gray-600">{filePath}</div>
