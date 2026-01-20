@@ -13,6 +13,8 @@ import UserManagement from './UserManagement';
 import ProjectsPage from '../Projects/Projects';
 import ImportPage from '../Projects/Import';
 import DashboardLayout from '../../components/DashboardLayout';
+import ExoneradoPage from '../exonerado/exonerados.pages';
+
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
@@ -22,6 +24,7 @@ function Dashboard({ user, onLogout }) {
     { to: 'projects', label: 'Proyectos' },
     { to: 'projects/import', label: 'Importar' },
     { to: 'users', label: 'Gestión de usuarios' },
+    { to: 'exonerado', label: 'Exonerado' },
   ];
 
   const logoutHandler = () => {
@@ -36,6 +39,7 @@ function Dashboard({ user, onLogout }) {
         <Route path="users" element={<UserManagement />} />
         <Route path="projects" element={<ProjectsPage user={user} onLogout={onLogout} />} />
         <Route path="projects/import" element={<ImportPage user={user} onLogout={onLogout} />} />
+        <Route path="exonerado" element={<ExoneradoPage />} />
       </Routes>
     </DashboardLayout>
   );
