@@ -5,6 +5,8 @@ class ProjectTimelineService {
   constructor(options = {}) {
     this.totalDeliveries = options.totalDeliveries || config.projectTimeline.TOTAL_DELIVERIES;
     this.maxMonths = options.maxMonths || config.projectTimeline.MAX_MONTHS;
+    this.firstDeliveryMonths = options.firstDeliveryMonths || config.projectTimeline.FIRST_DELIVERY_MONTHS || 1;
+    this.finalDeliveryMonths = options.finalDeliveryMonths || config.projectTimeline.FINAL_DELIVERY_MONTHS || 3;
   }
 
   buildInitialFields(payload = {}) {
@@ -15,7 +17,7 @@ class ProjectTimelineService {
       statusDetail: anteprojectApprovedAt ? 'anteproject_approved' : 'pending_anteproject',
       anteprojectApprovedAt,
       expiresAt: anteprojectApprovedAt ? this.calculateExpiration(anteprojectApprovedAt) : null,
-      nextDueDate: anteprojectApprovedAt ? this.computeNextDueDate(anteprojectApprovedAt) : null,
+      nextDueDate: anteprojectApprovedAt ? this.computeNextDueDate(anteprojectApprovedAt, 1) : null,
       lastDeliveryApprovedAt: null,
       deliveriesCompleted: 0,
       currentDeliveryNumber: anteprojectApprovedAt ? 1 : null,
@@ -30,9 +32,10 @@ class ProjectTimelineService {
     return addMonths(new Date(anteprojectDate), this.maxMonths);
   }
 
-  computeNextDueDate(baseDate) {
+  computeNextDueDate(baseDate, nextDeliveryNumber = 1) {
     if (!baseDate) return null;
-    return addMonths(new Date(baseDate), 1);
+    const months = nextDeliveryNumber >= this.totalDeliveries ? this.finalDeliveryMonths : this.firstDeliveryMonths;
+    return addMonths(new Date(baseDate), months);
   }
 
   ensureAnteproject(project) {
@@ -48,7 +51,9 @@ class ProjectTimelineService {
     }
 
     const approvedDeliveries = deliveries.filter((d) => d.status === config.deliveryStatus.APPROVED);
-    const completed = approvedDeliveries.length;
+    const approvedWithinRange = approvedDeliveries.filter((d) => d.deliveryNumber <= this.totalDeliveries);
+    const hasLegacyFinal = approvedDeliveries.some((d) => d.deliveryNumber > this.totalDeliveries);
+    const completed = hasLegacyFinal ? this.totalDeliveries : approvedWithinRange.length;
     if (completed >= this.totalDeliveries) {
       return null;
     }
@@ -60,7 +65,7 @@ class ProjectTimelineService {
     return {
       anteprojectApprovedAt: anteDate,
       expiresAt: this.calculateExpiration(anteDate),
-      nextDueDate: this.computeNextDueDate(anteDate),
+      nextDueDate: this.computeNextDueDate(anteDate, 1),
       status: config.projectStatus.ACTIVE,
       statusDetail: 'anteproject_approved',
       currentDeliveryNumber: 1,
@@ -68,15 +73,19 @@ class ProjectTimelineService {
   }
 
   applyApprovalUpdate(project, deliveryNumber, approvalDate = new Date()) {
-    const approvedCount = Math.max(deliveryNumber, project.deliveriesCompleted || 0);
+    const approvedCount = Math.min(
+      Math.max(deliveryNumber, project.deliveriesCompleted || 0),
+      this.totalDeliveries
+    );
     const completedAll = approvedCount >= this.totalDeliveries;
+    const nextDeliveryNumber = completedAll ? null : deliveryNumber + 1;
     return {
       deliveriesCompleted: approvedCount,
       lastDeliveryApprovedAt: approvalDate,
-      nextDueDate: completedAll ? null : this.computeNextDueDate(approvalDate),
+      nextDueDate: completedAll ? null : this.computeNextDueDate(approvalDate, nextDeliveryNumber),
       status: completedAll ? config.projectStatus.COMPLETED : config.projectStatus.ACTIVE,
       statusDetail: completedAll ? 'all_deliveries_completed' : `delivery_${deliveryNumber}_approved`,
-      currentDeliveryNumber: completedAll ? null : deliveryNumber + 1,
+      currentDeliveryNumber: nextDeliveryNumber,
     };
   }
 
@@ -84,9 +93,42 @@ class ProjectTimelineService {
     return {
       status: config.projectStatus.ACTIVE,
       statusDetail: `delivery_${deliveryNumber}_rejected`,
-      nextDueDate: this.computeNextDueDate(rejectionDate),
+      nextDueDate: this.computeNextDueDate(rejectionDate, deliveryNumber),
       currentDeliveryNumber: deliveryNumber,
     };
+  }
+
+  normalizeProjectProgress(project, deliveries = []) {
+    if (!project) return {};
+    const updates = {};
+    if (project.totalDeliveries !== this.totalDeliveries) {
+      updates.totalDeliveries = this.totalDeliveries;
+    }
+
+    const approvedDeliveries = deliveries.filter((d) => d.status === config.deliveryStatus.APPROVED);
+    const approvedWithinRange = approvedDeliveries.filter((d) => d.deliveryNumber <= this.totalDeliveries).length;
+    const hasLegacyFinal = approvedDeliveries.some((d) => d.deliveryNumber > this.totalDeliveries);
+    const normalizedCompleted = hasLegacyFinal
+      ? this.totalDeliveries
+      : Math.min(approvedWithinRange, this.totalDeliveries);
+
+    if ((project.deliveriesCompleted || 0) !== normalizedCompleted) {
+      updates.deliveriesCompleted = normalizedCompleted;
+    }
+
+    if (normalizedCompleted >= this.totalDeliveries) {
+      updates.status = config.projectStatus.COMPLETED;
+      updates.statusDetail = 'all_deliveries_completed';
+      updates.currentDeliveryNumber = null;
+      updates.nextDueDate = null;
+    } else if (project.anteprojectApprovedAt) {
+      const expected = normalizedCompleted + 1;
+      if (project.currentDeliveryNumber !== expected) {
+        updates.currentDeliveryNumber = expected;
+      }
+    }
+
+    return updates;
   }
 
   detectExpiration(project, now = new Date()) {

@@ -54,13 +54,16 @@ class ProjectController {
     const studentDocument = sanitizeString(projectData.studentDocument) || fallbackDocument;
     const studentName = composeStudentName(studentFirstNames, studentLastNames, studentDocument || sanitizeString(projectData.studentName));
     const internalStudentId = documentToStudentId(studentDocument);
-    const rowNumber = sanitizeString(projectData.rowNumber) || generateRowNumber();
+    const rowNumberInput = sanitizeString(projectData.rowNumber);
+    const projectCodeInput = sanitizeString(projectData.projectCode);
+    const generatedCode = projectCodeInput || rowNumberInput || this.generateProjectCode(internalStudentId || studentDocument);
+    const rowNumber = rowNumberInput || generatedCode;
     const boxNumber = sanitizeString(projectData.boxNumber) || sanitizeString(projectData.certificateNumber) || '';
     const payload = {
       title: sanitizeString(projectData.title) || 'Proyecto sin título',
       description: sanitizeString(projectData.description) || '',
       rowNumber,
-      projectCode: rowNumber,
+      projectCode: projectCodeInput || generatedCode,
       studentName,
       studentFirstNames,
       studentLastNames,
@@ -161,6 +164,11 @@ class ProjectController {
       }
 
       const deliveries = await this.deliveryRepo.findByProject(project._id);
+      const normalization = this.timelineService.normalizeProjectProgress(finalProject, deliveries);
+      if (normalization && Object.keys(normalization).length > 0) {
+        finalProject = await this.projectRepo.update(project._id, normalization);
+      }
+
       const expectedDelivery = this.timelineService.getExpectedDeliveryNumber(finalProject, deliveries);
       enriched.push({
         ...finalProject,
@@ -179,8 +187,12 @@ class ProjectController {
       return { success: false, error: 'Project not found' };
     }
     const deliveries = await this.deliveryRepo.findByProject(projectId);
-    const expected = this.timelineService.getExpectedDeliveryNumber(project, deliveries);
-    return { success: true, project: { ...project, deliveries, expectedDeliveryNumber: expected } };
+    const normalization = this.timelineService.normalizeProjectProgress(project, deliveries);
+    const finalProject = normalization && Object.keys(normalization).length > 0
+      ? await this.projectRepo.update(projectId, normalization)
+      : project;
+    const expected = this.timelineService.getExpectedDeliveryNumber(finalProject, deliveries);
+    return { success: true, project: { ...finalProject, deliveries, expectedDeliveryNumber: expected } };
   }
 
   async approveAnteproject(projectId, approvedDate, currentUser) {
@@ -196,9 +208,9 @@ class ProjectController {
   }
 
   generateProjectCode(studentId = '') {
-    const normalized = (studentId || 'ST').toString().replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toUpperCase();
+    const normalized = (studentId || 'SC').toString().replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toUpperCase();
     const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
-    return `${normalized || 'PRJ'}-${Date.now().toString().slice(-4)}-${randomPart}`;
+    return `${normalized || 'SC'}-${Date.now().toString(36).toUpperCase()}-${randomPart}`;
   }
 }
 

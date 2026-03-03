@@ -302,7 +302,6 @@ export function ReviewerHome({ user, onLogout }) {
             <option value="">Todas las entregas</option>
             <option value="1">Entrega 1</option>
             <option value="2">Entrega 2</option>
-            <option value="3">Entrega 3</option>
           </select>
           <input
             type="date"

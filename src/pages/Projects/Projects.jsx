@@ -495,8 +495,10 @@ export default function ProjectsPage({ user }) {
 
   const renderTimelineStatus = (project) => {
     const deliveries = project.deliveries || [];
-    const totalDeliveries = project.totalDeliveries || 3;
-    const acceptedDeliveries = deliveries.filter((d) => d.status === 'approved').length;
+    const totalDeliveries = project.totalDeliveries || 2;
+    const acceptedDeliveries = deliveries.filter(
+      (d) => d.status === 'approved' && d.deliveryNumber <= totalDeliveries
+    ).length;
     const lastSubmission = deliveries
       .filter((d) => d.submittedAt)
       .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))[0];
@@ -591,7 +593,10 @@ export default function ProjectsPage({ user }) {
       }
 
       if (deliveryFilter) {
-        const approvedCount = (project.deliveries || []).filter((delivery) => delivery.status === 'approved').length;
+        const totalDeliveries = project.totalDeliveries || 2;
+        const approvedCount = (project.deliveries || [])
+          .filter((delivery) => delivery.status === 'approved' && delivery.deliveryNumber <= totalDeliveries)
+          .length;
         if (approvedCount !== Number(deliveryFilter)) return false;
       }
 
@@ -685,7 +690,6 @@ export default function ProjectsPage({ user }) {
             <option value="0">0 aprobadas</option>
             <option value="1">1 aprobada</option>
             <option value="2">2 aprobadas</option>
-            <option value="3">3 aprobadas</option>
           </select>
           <input
             type="text"

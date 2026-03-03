@@ -59,10 +59,17 @@ class DatabaseConnection {
         autoload: true,
       });
 
+      this.db.exonerados = new Datastore({
+        filename: path.join(config.database.path, config.database.exonerados),
+        autoload: true,
+      });
+
       // Create indexes
       this.db.users.ensureIndex({ fieldName: 'username', unique: true });
       this.db.users.ensureIndex({ fieldName: 'email', unique: true });
       this.db.projects.ensureIndex({ fieldName: 'projectCode', unique: true });
+      this.db.exonerados.ensureIndex({ fieldName: 'code', unique: true, sparse: true });
+      this.db.exonerados.ensureIndex({ fieldName: 'cedula' });
 
       console.log('Database initialized successfully');
 

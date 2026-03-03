@@ -8,6 +8,7 @@ const config = {
     deliveries: 'deliveries.db',
     notifications: 'notifications.db',
     imports: 'imports.db',
+    exonerados: 'exonerados.db',
   },
   
   app: {
@@ -42,7 +43,9 @@ const config = {
   },
 
   projectTimeline: {
-    TOTAL_DELIVERIES: 3,
+    TOTAL_DELIVERIES: 2,
+    FIRST_DELIVERY_MONTHS: 1,
+    FINAL_DELIVERY_MONTHS: 3,
     MAX_MONTHS: 12,
     MONTHLY_INTERVAL_DAYS: 30,
   },

@@ -39,4 +39,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Import history
   getImportHistory: () => ipcRenderer.invoke('project:getImportHistory'),
   clearImportHistory: () => ipcRenderer.invoke('project:clearImportHistory'),
+  // Exonerados
+  getExonerados: () => ipcRenderer.invoke('exonerado:getAll'),
+  createExonerado: (data) => ipcRenderer.invoke('exonerado:create', data),
+  updateExonerado: (id, data) => ipcRenderer.invoke('exonerado:update', id, data),
+  deleteExonerado: (id) => ipcRenderer.invoke('exonerado:delete', id),
 });

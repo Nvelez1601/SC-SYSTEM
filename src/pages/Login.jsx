@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import usmWordmark from '../assets/usm-wordmark.svg';
 
 function Login({ onLogin }) {
   const [username, setUsername] = useState('');
@@ -28,18 +29,19 @@ function Login({ onLogin }) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
-      <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-usm-soft px-4 py-10">
+      <div className="bg-white/95 backdrop-blur p-8 rounded-2xl shadow-xl w-full max-w-lg border border-blue-100">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            USM - Seguimiento de Servicio Comunitario
+          <img src={usmWordmark} alt="Universidad Santa Maria" className="h-14 mx-auto mb-4" />
+          <h1 className="text-2xl md:text-3xl font-display text-usm-blue mb-2">
+            Seguimiento de Servicio Comunitario
           </h1>
-          <p className="text-gray-600">Inicia sesión en tu cuenta</p>
+          <p className="text-slate-600">Accede con tu usuario institucional.</p>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-2">
               Usuario
             </label>
             <input
@@ -47,7 +49,7 @@ function Login({ onLogin }) {
               id="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
               placeholder="Ingresa tu usuario"
               required
               disabled={loading}
@@ -55,7 +57,7 @@ function Login({ onLogin }) {
           </div>
 
           <div className="mb-6">
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-2">
               Contraseña
             </label>
             <input
@@ -63,7 +65,7 @@ function Login({ onLogin }) {
               id="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
               placeholder="Ingresa tu contraseña"
               required
               disabled={loading}
@@ -71,7 +73,7 @@ function Login({ onLogin }) {
           </div>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
               {error}
             </div>
           )}
@@ -79,14 +81,14 @@ function Login({ onLogin }) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full bg-usm-hero text-white py-2.5 px-4 rounded-lg hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
             {loading ? 'Iniciando sesión...' : 'Ingresar'}
           </button>
         </form>
 
-        <div className="mt-6 text-center text-sm text-gray-600">
-          <p>Contacta a tu administrador para acceder</p>
+        <div className="mt-6 text-center text-sm text-slate-500">
+          <p>Si no tienes acceso, contacta a tu administrador.</p>
         </div>
       </div>
     </div>

@@ -104,7 +104,11 @@ function sanitizeText(value) {
   if (value === undefined || value === null) {
     return '';
   }
-  return value.toString().replace(/\s+/g, ' ').trim();
+  const text = value.toString().replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const lowered = text.toLowerCase();
+  if (['null', 'undefined', 'nan', 'n/a'].includes(lowered)) return '';
+  return text;
 }
 
 function sanitizeDocument(value) {

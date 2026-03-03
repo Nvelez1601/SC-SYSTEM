@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import usmMark from '../assets/usm-mark.svg';
 import { Link, Outlet } from 'react-router-dom';
 
 export default function DashboardLayout({ user, title = '', links = [], onLogout, children }) {
@@ -10,8 +11,13 @@ export default function DashboardLayout({ user, title = '', links = [], onLogout
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-white">
       <header className="flex items-center justify-between bg-white/80 backdrop-blur shadow-sm px-4 py-3 sm:hidden">
         <div>
-          <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
-          <p className="text-xs text-slate-500">{user?.username}</p>
+          <div className="flex items-center gap-2">
+            <img src={usmMark} alt="USM" className="h-8 w-8" />
+            <div>
+              <h2 className="text-lg font-display text-slate-900">{title}</h2>
+              <p className="text-xs text-slate-500">{user?.username}</p>
+            </div>
+          </div>
         </div>
         <button
           type="button"
@@ -29,12 +35,17 @@ export default function DashboardLayout({ user, title = '', links = [], onLogout
 
       <div className="flex flex-col sm:flex-row min-h-[calc(100vh-56px)] sm:min-h-screen">
         <aside
-          className={`bg-white/90 backdrop-blur shadow-sm sm:w-64 sm:flex-shrink-0 ${isMenuOpen ? 'block' : 'hidden'} sm:block`}
+          className={`bg-white/90 backdrop-blur shadow-sm sm:w-72 sm:flex-shrink-0 ${isMenuOpen ? 'block' : 'hidden'} sm:block`}
         >
           <div className="flex flex-col h-full max-h-screen">
             <div className="hidden sm:block p-6 border-b">
-              <h2 className="text-xl font-bold text-slate-800">{title}</h2>
-              <p className="text-sm text-slate-600 mt-1">{user?.username}</p>
+              <div className="flex items-center gap-3">
+                <img src={usmMark} alt="USM" className="h-10 w-10" />
+                <div>
+                  <h2 className="text-xl font-display text-slate-900">{title}</h2>
+                  <p className="text-sm text-slate-500 mt-1">{user?.username}</p>
+                </div>
+              </div>
             </div>
 
             <nav className="p-4 flex-1 overflow-y-auto">
@@ -43,7 +54,7 @@ export default function DashboardLayout({ user, title = '', links = [], onLogout
                   key={l.to}
                   to={l.to}
                   onClick={closeMenu}
-                  className="block px-4 py-2 text-slate-700 hover:bg-blue-100/60 hover:text-blue-700 rounded-lg mb-2 transition"
+                  className="block px-4 py-2 text-slate-700 hover:bg-blue-100/60 hover:text-blue-800 rounded-lg mb-2 transition"
                 >
                   {l.label}
                 </Link>
@@ -56,7 +67,7 @@ export default function DashboardLayout({ user, title = '', links = [], onLogout
                   closeMenu();
                   onLogout?.();
                 }}
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="w-full px-4 py-2 bg-usm-hero text-white rounded-lg hover:shadow-md transition"
               >
                 Cerrar sesión
               </button>

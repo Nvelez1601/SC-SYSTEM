@@ -1,6 +1,7 @@
 const UserController = require('../controllers/UserController');
 const DeliveryController = require('../controllers/DeliveryController');
 const ProjectController = require('../controllers/ProjectController');
+const ExoneradoController = require('../controllers/ExoneradoController');
 const EmailService = require('../core/services/EmailService');
 const DatabaseConnection = require('../database/connection');
 const importExcel = require('../scripts/importExcel');
@@ -8,6 +9,7 @@ const importExcel = require('../scripts/importExcel');
 let userController;
 let deliveryController;
 let projectController;
+let exoneradoController;
 let emailService;
 
 function setupIpcHandlers(ipcMain) {
@@ -15,6 +17,7 @@ function setupIpcHandlers(ipcMain) {
   userController = new UserController();
   deliveryController = new DeliveryController();
   projectController = new ProjectController();
+  exoneradoController = new ExoneradoController();
   emailService = new EmailService();
   console.log('[IPC] setupIpcHandlers: controllers and services initialized');
 
@@ -181,6 +184,47 @@ function setupIpcHandlers(ipcMain) {
       return res;
     } catch (err) {
       console.error('[IPC] delivery:getPending error', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Exonerados Handlers
+  ipcMain.handle('exonerado:getAll', async () => {
+    try {
+      const res = await exoneradoController.getAll();
+      return res;
+    } catch (err) {
+      console.error('[IPC] exonerado:getAll error', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('exonerado:create', async (event, data) => {
+    try {
+      const res = await exoneradoController.create(data || {});
+      return res;
+    } catch (err) {
+      console.error('[IPC] exonerado:create error', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('exonerado:update', async (event, exoneradoId, data) => {
+    try {
+      const res = await exoneradoController.update(exoneradoId, data || {});
+      return res;
+    } catch (err) {
+      console.error('[IPC] exonerado:update error', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('exonerado:delete', async (event, exoneradoId) => {
+    try {
+      const res = await exoneradoController.remove(exoneradoId);
+      return res;
+    } catch (err) {
+      console.error('[IPC] exonerado:delete error', err);
       return { success: false, error: err.message };
     }
   });

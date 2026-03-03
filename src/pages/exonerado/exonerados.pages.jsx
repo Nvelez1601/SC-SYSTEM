@@ -1,25 +1,40 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 function ExoneradoPage() {
   const [formData, setFormData] = useState({
-    id: '',
+    code: '',
     apellido: '',
     nombre: '',
     cedula: '',
     universidadTsu: '',
     fechaServicio: '',
     titulo: '',
-    observaciones: ''
+    observaciones: '',
+    razonExoneracion: '',
+    proyectoTitulo: '',
+    proyectoCodigo: ''
   });
 
   const [exonerados, setExonerados] = useState([]);
   const [editando, setEditando] = useState(false);
   const [editId, setEditId] = useState(null);
 
-  // Generar ID automático si está vacío
-  const generarId = () => {
-    return 'EX-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+  const api = window.electronAPI || {};
+
+  const loadExonerados = async () => {
+    if (!api.getExonerados) return;
+    try {
+      const res = await api.getExonerados();
+      setExonerados(res?.success ? res.exonerados ?? [] : []);
+    } catch (error) {
+      console.error('Error al cargar exonerados:', error);
+      setExonerados([]);
+    }
   };
+
+  useEffect(() => {
+    loadExonerados();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -30,37 +45,38 @@ function ExoneradoPage() {
       return;
     }
 
-    const datosParaGuardar = {
-      ...formData,
-      // Si no hay ID, generar uno automático
-      id: formData.id || generarId(),
-      fechaRegistro: new Date().toISOString()
-    };
-
     try {
       if (editando && editId) {
-        // Actualizar registro existente
-        const updated = exonerados.map(item => 
-          item.id === editId ? datosParaGuardar : item
-        );
-        setExonerados(updated);
+        const res = await api.updateExonerado(editId, formData);
+        if (!res?.success) {
+          alert(res?.error || 'Error al actualizar el registro');
+          return;
+        }
         alert('Registro actualizado exitosamente');
       } else {
-        // Agregar nuevo registro
-        setExonerados([...exonerados, datosParaGuardar]);
+        const res = await api.createExonerado(formData);
+        if (!res?.success) {
+          alert(res?.error || 'Error al guardar el registro');
+          return;
+        }
         alert('Registro guardado exitosamente');
       }
 
+      await loadExonerados();
+
       // Limpiar formulario
       setFormData({
-        id: '',
+        code: '',
         apellido: '',
         nombre: '',
         cedula: '',
         universidadTsu: '',
         fechaServicio: '',
         titulo: '',
-        observaciones: ''
+        observaciones: '',
+        razonExoneracion: '',
+        proyectoTitulo: '',
+        proyectoCodigo: ''
       });
       setEditando(false);
       setEditId(null);
@@ -81,31 +97,43 @@ function ExoneradoPage() {
   const handleEditar = (exonerado) => {
     setFormData(exonerado);
     setEditando(true);
-    setEditId(exonerado.id);
+    setEditId(exonerado._id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleEliminar = (id) => {
+  const handleEliminar = async (id) => {
     if (window.confirm('¿Está seguro de eliminar este registro?')) {
-      const updated = exonerados.filter(item => item.id !== id);
-      setExonerados(updated);
-      alert('Registro eliminado');
+      try {
+        const res = await api.deleteExonerado(id);
+        if (!res?.success) {
+          alert(res?.error || 'Error al eliminar el registro');
+          return;
+        }
+        await loadExonerados();
+        alert('Registro eliminado');
+      } catch (error) {
+        console.error('Error al eliminar:', error);
+        alert('Error al eliminar el registro');
+      }
     }
   };
 
   const exportarCSV = () => {
-    const headers = ['ID', 'Apellido', 'Nombre', 'Cédula', 'Universidad/TSU', 'Año Servicio', 'Título', 'Observaciones', 'Fecha Registro'];
+    const headers = ['Código', 'Apellido', 'Nombre', 'Cédula', 'Universidad/TSU', 'Año Servicio', 'Título', 'Razón', 'Proyecto', 'Código Proyecto', 'Observaciones', 'Fecha Registro'];
     
     const rows = exonerados.map(item => [
-      item.id,
+      item.code,
       item.apellido,
       item.nombre,
       item.cedula,
       item.universidadTsu,
       item.fechaServicio,
       item.titulo,
+      item.razonExoneracion,
+      item.proyectoTitulo,
+      item.proyectoCodigo,
       item.observaciones,
-      new Date(item.fechaRegistro).toLocaleDateString()
+      item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ''
     ]);
 
     const csvContent = [
@@ -140,12 +168,12 @@ function ExoneradoPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  ID (auto-generado si se deja vacío)
+                  Código (auto-generado si se deja vacío)
                 </label>
                 <input
                   type="text"
-                  name="id"
-                  value={formData.id}
+                  name="code"
+                  value={formData.code}
                   onChange={handleChange}
                   placeholder="EX-001"
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -211,6 +239,20 @@ function ExoneradoPage() {
               />
             </div>
 
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Razón de exoneración
+                </label>
+                <textarea
+                  name="razonExoneracion"
+                  value={formData.razonExoneracion}
+                  onChange={handleChange}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Motivo de la exoneración"
+                />
+              </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -249,6 +291,46 @@ function ExoneradoPage() {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Proyecto (título)
+                </label>
+                <input
+                  type="text"
+                  name="proyectoTitulo"
+                  value={formData.proyectoTitulo}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Código de proyecto
+                </label>
+                <input
+                  type="text"
+                  name="proyectoCodigo"
+                  value={formData.proyectoCodigo}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Observaciones
+              </label>
+              <textarea
+                name="observaciones"
+                value={formData.observaciones}
+                onChange={handleChange}
+                rows={2}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
 
             <div className="flex gap-3 pt-4">
               <button
@@ -263,13 +345,17 @@ function ExoneradoPage() {
                   type="button"
                   onClick={() => {
                     setFormData({
-                      id: '',
+                      code: '',
                       apellido: '',
                       nombre: '',
                       cedula: '',
                       universidadTsu: '',
                       fechaServicio: '',
                       titulo: '',
+                      observaciones: '',
+                      razonExoneracion: '',
+                      proyectoTitulo: '',
+                      proyectoCodigo: '',
                     });
                     setEditando(false);
                     setEditId(null);
@@ -305,20 +391,24 @@ function ExoneradoPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-blue-50">
-                    <th className="py-2 px-3 text-left">ID</th>
+                    <th className="py-2 px-3 text-left">Código</th>
                     <th className="py-2 px-3 text-left">Apellido, Nombre</th>
                     <th className="py-2 px-3 text-left">Cédula</th>
                     <th className="py-2 px-3 text-left">Universidad</th>
+                    <th className="py-2 px-3 text-left">Razón</th>
+                    <th className="py-2 px-3 text-left">Proyecto</th>
                     <th className="py-2 px-3 text-left">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {exonerados.map((item, index) => (
-                    <tr key={item.id} className="border-b hover:bg-blue-50">
-                      <td className="py-2 px-3 font-mono text-xs">{item.id}</td>
+                    <tr key={item._id} className="border-b hover:bg-blue-50">
+                      <td className="py-2 px-3 font-mono text-xs">{item.code}</td>
                       <td className="py-2 px-3">{item.apellido}, {item.nombre}</td>
                       <td className="py-2 px-3">{item.cedula}</td>
                       <td className="py-2 px-3">{item.universidadTsu}</td>
+                      <td className="py-2 px-3">{item.razonExoneracion || '—'}</td>
+                      <td className="py-2 px-3">{item.proyectoTitulo || item.proyectoCodigo || '—'}</td>
                       <td className="py-2 px-3">
                         <div className="flex gap-2">
                           <button
@@ -328,7 +418,7 @@ function ExoneradoPage() {
                             Editar
                           </button>
                           <button
-                            onClick={() => handleEliminar(item.id)}
+                            onClick={() => handleEliminar(item._id)}
                             className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
                           >
                             Eliminar
@@ -356,7 +446,7 @@ function ExoneradoPage() {
           <p className="text-sm text-blue-600">Último Registro</p>
           <p className="text-lg font-semibold">
             {exonerados.length > 0 ? 
-              new Date(exonerados[exonerados.length-1].fechaRegistro).toLocaleDateString() : 
+              new Date(exonerados[exonerados.length-1].createdAt).toLocaleDateString() : 
               'N/A'}
           </p>
         </div>

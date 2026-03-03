@@ -25,6 +25,10 @@ class SubmitDeliveryUseCase {
 
       this.timelineService.ensureAnteproject(project);
 
+      if (deliveryNumber > this.timelineService.totalDeliveries) {
+        throw new Error(`Delivery number exceeds ${this.timelineService.totalDeliveries}`);
+      }
+
       const deliveries = await this.deliveryRepository.findByProject(projectId);
       const expectedNumber = this.timelineService.getExpectedDeliveryNumber(project, deliveries);
 
@@ -49,6 +53,8 @@ class SubmitDeliveryUseCase {
       const submittedAt = data.submittedAt ? new Date(data.submittedAt) : new Date();
       const delivery = {
         projectId,
+        projectCode: project.projectCode || project.rowNumber || null,
+        projectTitle: project.title || null,
         deliveryNumber,
         title: data.title || `Delivery ${deliveryNumber}`,
         description: data.description || '',
