@@ -12,6 +12,11 @@ const deliveryStatusMeta = {
 };
 
 const getStatusMeta = (status) => deliveryStatusMeta[status] || { label: status || 'desconocido', pill: 'bg-gray-100 text-gray-700' };
+const getPhaseLabel = (phase) => {
+  if (Number(phase) === 1) return 'Anteproyecto';
+  if (Number(phase) === 2) return 'Proyecto final';
+  return `Entrega ${phase}`;
+};
 const getUserSignature = (user) => {
   if (!user) return '';
   const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
@@ -35,6 +40,61 @@ const getMemberDisplay = (project) => {
     || [project.studentFirstNames, project.studentLastNames].filter(Boolean).join(' ');
   const member2 = [project.member2FirstNames, project.member2LastNames].filter(Boolean).join(' ');
   return [member1, member2].filter(Boolean).join(' · ');
+};
+
+const MIN_VENEZUELAN_ID_LENGTH = 6;
+const MAX_VENEZUELAN_ID_LENGTH = 9;
+
+const isValidVenezuelanId = (value) => {
+  if (!value) return false;
+  const cedula = String(value).trim();
+  if (!cedula) return false;
+  if (!/^\d+$/.test(cedula)) return false;
+  if (cedula.length < MIN_VENEZUELAN_ID_LENGTH || cedula.length > MAX_VENEZUELAN_ID_LENGTH) return false;
+  if (/^0+$/.test(cedula)) return false;
+  return true;
+};
+
+const onlyDigits = (value) => (value ? String(value).replace(/\D/g, '') : '');
+
+const buildInfoFormFromProject = (project, userSignature) => {
+  if (!project) {
+    return {
+      rowNumber: '',
+      member1FirstNames: '',
+      member1LastNames: '',
+      member2FirstNames: '',
+      member2LastNames: '',
+      member1Document: '',
+      member2Document: '',
+      semester: '',
+      title: '',
+      description: '',
+      community: '',
+      boxNumber: '',
+      registeredBy: userSignature || '',
+    };
+  }
+
+  const fallbackMember1FirstNames = project.member1FirstNames || project.studentFirstNames || '';
+  const fallbackMember1LastNames = project.member1LastNames || project.studentLastNames || '';
+  const fallbackMember1Document = project.member1Document || project.studentDocument || '';
+
+  return {
+    rowNumber: project.rowNumber || '',
+    member1FirstNames: fallbackMember1FirstNames,
+    member1LastNames: fallbackMember1LastNames,
+    member2FirstNames: project.member2FirstNames || '',
+    member2LastNames: project.member2LastNames || '',
+    member1Document: fallbackMember1Document,
+    member2Document: project.member2Document || '',
+    semester: project.semester || '',
+    title: project.title || '',
+    description: project.description || '',
+    community: project.community || '',
+    boxNumber: project.boxNumber || project.certificateNumber || '',
+    registeredBy: project.registeredBy || userSignature || '',
+  };
 };
 
 const initialProjectForm = {
@@ -74,13 +134,22 @@ export default function ProjectsPage({ user }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [semesterFilter, setSemesterFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [deliveryFilter, setDeliveryFilter] = useState('');
   const [boxFilter, setBoxFilter] = useState('');
+  const [codeFilter, setCodeFilter] = useState('');
+  const [showImport, setShowImport] = useState(false);
+  const [importFilePath, setImportFilePath] = useState('');
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [importError, setImportError] = useState('');
+  const [importHistory, setImportHistory] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
   const location = useLocation();
   const openedProjectRef = useRef(null);
   const userSignature = useMemo(() => getUserSignature(user), [user]);
   const canReviewDeliveries = useMemo(() => REVIEWER_ROLES.includes(user?.role), [user]);
   const reviewerIdentifier = useMemo(() => user?._id || user?.username || user?.email || userSignature, [user, userSignature]);
+  const canImportProjects = useMemo(() => ['super_admin', 'admin'].includes(user?.role), [user]);
 
   useEffect(() => {
     if (userSignature) {
@@ -106,6 +175,17 @@ export default function ProjectsPage({ user }) {
       alert(`Completa los siguientes campos: ${missing.join(', ')}`);
       return false;
     }
+
+    if (!isValidVenezuelanId(data.member1Document)) {
+      alert('La cédula del Integrante 1 debe ser numérica, con entre 6 y 9 dígitos y no puede ser solo ceros.');
+      return false;
+    }
+
+    if (data.member2Document && !isValidVenezuelanId(data.member2Document)) {
+      alert('La cédula del Integrante 2 debe ser numérica, con entre 6 y 9 dígitos y no puede ser solo ceros.');
+      return false;
+    }
+
     return true;
   };
 
@@ -149,6 +229,60 @@ export default function ProjectsPage({ user }) {
     loadProjects();
   }, []);
 
+  const loadImportHistory = async () => {
+    if (!api.getImportHistory) return;
+    try {
+      const res = await api.getImportHistory('projects');
+      const imports = res?.success ? res.imports ?? [] : [];
+      const filtered = imports.filter((item) => item && item.summary && (typeof item.summary.createdProjects === 'number' || typeof item.summary.createdDeliveries === 'number'));
+      setImportHistory(filtered);
+    } catch (error) {
+      console.error('Error al cargar historial de importaciones:', error);
+      setImportHistory([]);
+    }
+  };
+
+  const handleImportFileChange = (e) => {
+    setImportResult(null);
+    setImportError('');
+    const file = e.target.files && e.target.files[0];
+    setImportFilePath(file ? file.path || '' : '');
+  };
+
+  const handleImport = async () => {
+    if (!api.importExcel) {
+      setImportError('La importacion no esta disponible en esta version.');
+      return;
+    }
+    if (!importFilePath) {
+      setImportError('Selecciona un archivo antes de importar');
+      return;
+    }
+
+    try {
+      setImportLoading(true);
+      setImportError('');
+      const res = await api.importExcel(importFilePath);
+      setImportResult(res);
+      await loadImportHistory();
+      await loadProjects();
+    } catch (error) {
+      setImportError(error?.message || 'Error al importar el archivo');
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleClearImportHistory = async () => {
+    if (!confirm('Eliminar todo el historial de importaciones?')) return;
+    try {
+      await api.clearImportHistory('projects');
+      await loadImportHistory();
+    } catch (error) {
+      console.error('Error al limpiar historial de importaciones:', error);
+    }
+  };
+
   useEffect(() => {
     const targetId = location?.state?.openProjectId;
     if (!targetId || !projects.length) return;
@@ -188,24 +322,7 @@ export default function ProjectsPage({ user }) {
   const openEdit = (project) => {
     setSelectedProject(project);
     setAnteDate(project.anteprojectApprovedAt ? project.anteprojectApprovedAt.slice(0, 10) : '');
-    const fallbackMember1FirstNames = project.member1FirstNames || project.studentFirstNames || '';
-    const fallbackMember1LastNames = project.member1LastNames || project.studentLastNames || '';
-    const fallbackMember1Document = project.member1Document || project.studentDocument || '';
-    setInfoForm({
-      rowNumber: project.rowNumber || '',
-      member1FirstNames: fallbackMember1FirstNames,
-      member1LastNames: fallbackMember1LastNames,
-      member2FirstNames: project.member2FirstNames || '',
-      member2LastNames: project.member2LastNames || '',
-      member1Document: fallbackMember1Document,
-      member2Document: project.member2Document || '',
-      semester: project.semester || '',
-      title: project.title || '',
-      description: project.description || '',
-      community: project.community || '',
-      boxNumber: project.boxNumber || project.certificateNumber || '',
-      registeredBy: project.registeredBy || userSignature || '',
-    });
+    setInfoForm(buildInfoFormFromProject(project, userSignature));
     resetDeliveryFormForProject(project);
     setActionMessage('');
   };
@@ -239,24 +356,7 @@ export default function ProjectsPage({ user }) {
       const refreshed = await api.getProjectById(projectId);
       if (refreshed?.success) {
         setSelectedProject(refreshed.project);
-        const fallbackMember1FirstNames = refreshed.project.member1FirstNames || refreshed.project.studentFirstNames || '';
-        const fallbackMember1LastNames = refreshed.project.member1LastNames || refreshed.project.studentLastNames || '';
-        const fallbackMember1Document = refreshed.project.member1Document || refreshed.project.studentDocument || '';
-        setInfoForm({
-          rowNumber: refreshed.project.rowNumber || '',
-          member1FirstNames: fallbackMember1FirstNames,
-          member1LastNames: fallbackMember1LastNames,
-          member2FirstNames: refreshed.project.member2FirstNames || '',
-          member2LastNames: refreshed.project.member2LastNames || '',
-          member1Document: fallbackMember1Document,
-          member2Document: refreshed.project.member2Document || '',
-          semester: refreshed.project.semester || '',
-          title: refreshed.project.title || '',
-          description: refreshed.project.description || '',
-          community: refreshed.project.community || '',
-          boxNumber: refreshed.project.boxNumber || refreshed.project.certificateNumber || '',
-          registeredBy: refreshed.project.registeredBy || userSignature || '',
-        });
+        setInfoForm(buildInfoFormFromProject(refreshed.project, userSignature));
         setAnteDate(refreshed.project.anteprojectApprovedAt ? refreshed.project.anteprojectApprovedAt.slice(0, 10) : '');
         resetDeliveryFormForProject(refreshed.project);
       }
@@ -378,6 +478,17 @@ export default function ProjectsPage({ user }) {
     event.preventDefault();
     if (!selectedProject || !api.updateProject) return;
 
+    const doc1 = (infoForm.member1Document || '').trim();
+    const doc2 = (infoForm.member2Document || '').trim();
+    if (doc1 && !isValidVenezuelanId(doc1)) {
+      alert('La cédula del Integrante 1 debe ser numérica, con entre 6 y 9 dígitos y no puede ser solo ceros.');
+      return;
+    }
+    if (doc2 && !isValidVenezuelanId(doc2)) {
+      alert('La cédula del Integrante 2 debe ser numérica, con entre 6 y 9 dígitos y no puede ser solo ceros.');
+      return;
+    }
+
     try {
       const allowed = [
         'member1FirstNames',
@@ -434,7 +545,7 @@ export default function ProjectsPage({ user }) {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold">{delivery.title || `Entrega ${delivery.deliveryNumber}`}</p>
-                  <p className="text-xs text-gray-500">Fase: {delivery.deliveryNumber}</p>
+                  <p className="text-xs text-gray-500">Fase: {getPhaseLabel(delivery.deliveryNumber)}</p>
                 </div>
                 <span className={`text-xs font-medium px-2 py-1 rounded uppercase tracking-wide ${statusMeta.pill}`}>
                   {statusMeta.label}
@@ -528,7 +639,7 @@ export default function ProjectsPage({ user }) {
       ...(nextDueDate
         ? [{ label: 'Próxima fecha límite', value: format(new Date(nextDueDate), 'dd/MM/yyyy') }]
         : []),
-      { label: 'Fase actual', value: currentPhase ? `Entrega ${currentPhase}` : 'No iniciada' },
+      { label: 'Fase actual', value: currentPhase ? getPhaseLabel(currentPhase) : 'No iniciada' },
       { label: 'Entregas completadas', value: `${acceptedDeliveries} / ${totalDeliveries}` },
       {
         label: 'Última entrega',
@@ -548,15 +659,6 @@ export default function ProjectsPage({ user }) {
       </dl>
     );
   };
-
-  const renderCreateButton = (
-    <button
-      onClick={openCreateModal}
-      className="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 transition"
-    >
-      Nuevo proyecto
-    </button>
-  );
 
   const isAnteprojectApproved = Boolean(selectedProject?.anteprojectApprovedAt);
   const expectedPhase = selectedProject?.expectedDeliveryNumber || 1;
@@ -592,17 +694,14 @@ export default function ProjectsPage({ user }) {
         }
       }
 
-      if (deliveryFilter) {
-        const totalDeliveries = project.totalDeliveries || 2;
-        const approvedCount = (project.deliveries || [])
-          .filter((delivery) => delivery.status === 'approved' && delivery.deliveryNumber <= totalDeliveries)
-          .length;
-        if (approvedCount !== Number(deliveryFilter)) return false;
-      }
-
       if (boxFilter) {
         const boxValue = project.boxNumber || project.certificateNumber || '';
         if (!String(boxValue).toLowerCase().includes(boxFilter.trim().toLowerCase())) return false;
+      }
+
+      if (codeFilter) {
+        const codeValue = project.projectCode || project.rowNumber || '';
+        if (!String(codeValue).toLowerCase().includes(codeFilter.trim().toLowerCase())) return false;
       }
 
       if (!term) return true;
@@ -614,11 +713,45 @@ export default function ProjectsPage({ user }) {
       ]
         .filter(Boolean)
         .join(' ');
-      return [project.title, project.rowNumber, project.projectCode, project.semester, members]
+      return [project.title, project.semester, project.community, members]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term));
     });
-  }, [sortedProjects, searchTerm, semesterFilter, statusFilter, deliveryFilter, boxFilter]);
+  }, [sortedProjects, searchTerm, semesterFilter, statusFilter, boxFilter, codeFilter]);
+
+  const totalPages = useMemo(() => {
+    const pages = Math.ceil(filteredProjects.length / itemsPerPage);
+    return pages > 0 ? pages : 1;
+  }, [filteredProjects.length, itemsPerPage]);
+
+  const paginatedProjects = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredProjects.slice(start, start + itemsPerPage);
+  }, [filteredProjects, currentPage, itemsPerPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, semesterFilter, statusFilter, boxFilter, codeFilter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const buildPageItems = (total, current) => {
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    const pages = [1];
+    if (current > 3) pages.push('...');
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+    for (let i = start; i <= end; i += 1) pages.push(i);
+    if (current < total - 2) pages.push('...');
+    pages.push(total);
+    return pages;
+  };
 
   const semesters = useMemo(() => {
     const set = new Set();
@@ -630,35 +763,50 @@ export default function ProjectsPage({ user }) {
   }, [projects]);
 
   const groupedProjects = useMemo(() => {
-    return filteredProjects.reduce((acc, project) => {
+    return paginatedProjects.reduce((acc, project) => {
       const key = normalizeSemesterLabel(project.semester) || 'Sin semestre';
       if (!acc[key]) acc[key] = [];
       acc[key].push(project);
       return acc;
     }, {});
-  }, [filteredProjects]);
+  }, [paginatedProjects]);
 
   return (
-    <div className="p-6 space-y-6 h-screen flex flex-col">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Proyectos</h1>
-          <p className="text-sm text-gray-500">Monitorea cada entrega y valida el temporizador de 3 meses.</p>
+    <div className="space-y-6">
+      <div className="rounded-2xl bg-gradient-to-r from-blue-700 via-blue-600 to-sky-500 p-6 text-white shadow-lg">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-semibold">Proyectos</h1>
+            <p className="text-sm text-blue-100">Monitorea 2 entregas y controla el avance por semestre.</p>
+          </div>
         </div>
-        {renderCreateButton}
-      </header>
+      </div>
 
-      <div className="bg-white rounded-lg border border-gray-100 p-4 space-y-3">
+      <div className="bg-white/90 backdrop-blur border border-blue-100 rounded-2xl shadow-md p-4">
         <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
           <input
             type="text"
-            className="w-full border rounded px-3 py-2"
-            placeholder="Buscar por título, código o integrante"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2"
+            placeholder="Buscar por título o integrante"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
+          <input
+            type="text"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2"
+            placeholder="Código del proyecto"
+            value={codeFilter}
+            onChange={(e) => setCodeFilter(e.target.value)}
+          />
+          <input
+            type="text"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2"
+            placeholder="Caja Nº"
+            value={boxFilter}
+            onChange={(e) => setBoxFilter(e.target.value)}
+          />
           <select
-            className="w-full border rounded px-3 py-2"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2"
             value={semesterFilter}
             onChange={(e) => setSemesterFilter(e.target.value)}
           >
@@ -670,7 +818,7 @@ export default function ProjectsPage({ user }) {
             ))}
           </select>
           <select
-            className="w-full border rounded px-3 py-2"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
@@ -681,64 +829,110 @@ export default function ProjectsPage({ user }) {
             <option value="expired">Expirados</option>
             <option value="draft">Borrador</option>
           </select>
-          <select
-            className="w-full border rounded px-3 py-2"
-            value={deliveryFilter}
-            onChange={(e) => setDeliveryFilter(e.target.value)}
-          >
-            <option value="">Todas las entregas</option>
-            <option value="0">0 aprobadas</option>
-            <option value="1">1 aprobada</option>
-            <option value="2">2 aprobadas</option>
-          </select>
-          <input
-            type="text"
-            className="w-full border rounded px-3 py-2"
-            placeholder="Caja Nº"
-            value={boxFilter}
-            onChange={(e) => setBoxFilter(e.target.value)}
-          />
-          <div className="text-xs text-gray-500 flex items-center">
+          <div className="text-xs text-slate-500 flex items-center">
             {filteredProjects.length} proyectos encontrados
+          </div>
+        </div>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-xs text-slate-500">Filtros aplicados</div>
+          <div className="flex flex-wrap gap-3 sm:justify-end">
+            {canImportProjects && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowImport(true);
+                  loadImportHistory();
+                }}
+                className="inline-flex items-center px-4 py-2 bg-sky-200 text-sky-900 rounded-lg hover:bg-sky-300 transition"
+              >
+                Importar proyectos
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+            >
+              Nuevo proyecto
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden">
-        {loading ? (
-          <p className="text-gray-500">Cargando proyectos...</p>
-        ) : filteredProjects.length === 0 ? (
-          <div className="border-2 border-dashed rounded p-8 text-center text-gray-500">No hay proyectos registrados.</div>
-        ) : (
-          <div className="h-full overflow-y-auto pr-2 space-y-6">
-            {Object.entries(groupedProjects).map(([semester, items]) => (
-              <section key={semester} className="space-y-3">
-                <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide">{semester}</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {items.map((project) => {
-                    const members = getMemberDisplay(project);
+      {loading ? (
+        <p className="text-gray-500">Cargando proyectos...</p>
+      ) : filteredProjects.length === 0 ? (
+        <div className="border-2 border-dashed rounded-2xl p-8 text-center text-gray-500">No hay proyectos registrados.</div>
+      ) : (
+        <div className="space-y-6">
+          {Object.entries(groupedProjects).map(([semester, items]) => (
+            <section key={semester} className="space-y-3">
+              <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide">{semester}</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {items.map((project) => {
+                  const members = getMemberDisplay(project);
 
-                    return (
-                      <article key={project._id} className="p-4 bg-white rounded shadow-sm border border-gray-100">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h2 className="text-lg font-semibold">{project.title || 'Sin título'}</h2>
-                            <p className="text-sm text-gray-500">Código: {project.rowNumber || project.projectCode || 'N/A'}</p>
-                            <p className="text-sm text-gray-600">Integrantes: {members || 'Sin registro'}</p>
-                          </div>
-                          <button className="text-sm text-primary-600 hover:underline" onClick={() => openEdit(project)}>
-                            Ver detalles
-                          </button>
+                  return (
+                    <article key={project._id} className="p-4 bg-white rounded-2xl shadow-sm border border-blue-100">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <h2 className="text-lg font-semibold text-slate-900">{project.title || 'Sin título'}</h2>
+                          <p className="text-sm text-slate-500">Código: {project.rowNumber || project.projectCode || 'N/A'}</p>
+                          <p className="text-sm text-slate-600">Integrantes: {members || 'Sin registro'}</p>
                         </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
+                        <button className="text-sm text-blue-700 hover:underline" onClick={() => openEdit(project)}>
+                          Ver detalles
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+          <div className="mt-4 text-sm text-slate-600">
+            Total: {filteredProjects.length} proyecto(s) 
+            {' '}• Página {currentPage} de {totalPages}
           </div>
-        )}
-      </div>
+          {totalPages > 1 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                className="px-3 py-1 border rounded"
+                disabled={currentPage === 1}
+              >
+                Anterior
+              </button>
+              {buildPageItems(totalPages, currentPage).map((page, index) =>
+                page === '...'
+                  ? (
+                    <span key={`ellipsis-${index}`} className="px-2 text-slate-500">
+                      ...
+                    </span>
+                  ) : (
+                    <button
+                      key={page}
+                      type="button"
+                      onClick={() => setCurrentPage(page)}
+                      className={`px-3 py-1 rounded ${page === currentPage ? 'bg-blue-600 text-white' : 'border'}`}
+                    >
+                      {page}
+                    </button>
+                  )
+              )}
+              <button
+                type="button"
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                className="px-3 py-1 border rounded"
+                disabled={currentPage === totalPages}
+              >
+                Siguiente
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {showCreate && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
@@ -811,7 +1005,7 @@ export default function ProjectsPage({ user }) {
                     type="text"
                     className="w-full border rounded px-3 py-2"
                     value={projectForm.member1Document}
-                    onChange={(e) => setProjectForm({ ...projectForm, member1Document: e.target.value })}
+                    onChange={(e) => setProjectForm({ ...projectForm, member1Document: onlyDigits(e.target.value) })}
                   />
                 </div>
                 <div>
@@ -820,7 +1014,7 @@ export default function ProjectsPage({ user }) {
                     type="text"
                     className="w-full border rounded px-3 py-2"
                     value={projectForm.member2Document}
-                    onChange={(e) => setProjectForm({ ...projectForm, member2Document: e.target.value })}
+                    onChange={(e) => setProjectForm({ ...projectForm, member2Document: onlyDigits(e.target.value) })}
                   />
                 </div>
                 <div>
@@ -878,6 +1072,88 @@ export default function ProjectsPage({ user }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showImport && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 px-3">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-semibold">Importar proyectos</h3>
+              <button
+                type="button"
+                onClick={() => setShowImport(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ×
+              </button>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <p className="text-sm text-slate-600 mb-2">Selecciona el archivo Excel o CSV con los proyectos.</p>
+              <input type="file" accept=".xlsx,.xls,.csv" onChange={handleImportFileChange} className="mb-3" />
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleImport}
+                  disabled={importLoading}
+                  className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  {importLoading ? 'Importando...' : 'Importar'}
+                </button>
+                <div className="text-xs text-slate-500 break-all">{importFilePath}</div>
+              </div>
+              {importError && <div className="mt-3 text-red-600 text-sm">{importError}</div>}
+            </div>
+
+            {importResult && (
+              <div className="bg-green-50 border border-green-100 rounded-xl p-4 text-sm text-green-800">
+                Importacion completa: {importResult?.results?.createdProjects || 0} proyectos, {importResult?.results?.createdDeliveries || 0} entregas, {importResult?.results?.errors?.length || 0} errores.
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-slate-700">Historial de importaciones</h4>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={loadImportHistory}
+                    className="px-3 py-1 text-xs border rounded"
+                  >
+                    Refrescar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearImportHistory}
+                    className="px-3 py-1 text-xs bg-red-600 text-white rounded"
+                  >
+                    Limpiar
+                  </button>
+                </div>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-xl p-4">
+                {importHistory.length === 0 ? (
+                  <p className="text-xs text-slate-500">No hay importaciones registradas.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {importHistory.map((item) => (
+                      <li key={item._id} className="text-xs text-slate-600 flex items-center justify-between">
+                        <div>
+                          <div className="font-medium text-slate-700">{item.fileName || 'Archivo sin nombre'}</div>
+                          <div>{new Date(item.importedAt).toLocaleString()}</div>
+                        </div>
+                        <div>
+                          {item.summary
+                            ? `${item.summary.createdProjects || 0} proyectos • ${item.summary.createdDeliveries || 0} entregas • ${item.summary.errors || 0} errores`
+                            : ''}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1068,7 +1344,7 @@ export default function ProjectsPage({ user }) {
                   <article className="p-4 rounded border border-gray-200 bg-white">
                     <h4 className="text-sm font-semibold text-gray-600">Registrar entrega</h4>
                     <p className="text-xs text-gray-500 mb-2">Solo se permite siguiendo la secuencia del temporizador.</p>
-                    <p className="text-xs text-blue-600 mb-2">Entrega permitida ahora: #{expectedPhase}</p>
+                    <p className="text-xs text-blue-600 mb-2">Entrega permitida ahora: {getPhaseLabel(expectedPhase)}</p>
                     {isDeliveryWindowLocked && (
                       <p className="text-xs text-red-600 mb-2">
                         Ya existe una entrega en revisión para esta fase. Espera el resultado para registrar la siguiente.
@@ -1081,9 +1357,8 @@ export default function ProjectsPage({ user }) {
                       disabled={isDeliveryWindowLocked}
                     >
                       <option value="">Selecciona la fase</option>
-                      <option value="1" disabled={expectedPhase !== 1}>Primera entrega</option>
-                      <option value="2" disabled={expectedPhase !== 2}>Segunda entrega</option>
-                      <option value="3" disabled={expectedPhase !== 3}>Tercera entrega</option>
+                      <option value="1" disabled={expectedPhase !== 1}>Anteproyecto</option>
+                      <option value="2" disabled={expectedPhase !== 2}>Proyecto final</option>
                     </select>
                     <input
                       type="text"
@@ -1123,7 +1398,7 @@ export default function ProjectsPage({ user }) {
                     )}
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {[1, 2, 3].map((phase) => {
+                    {[1, 2].map((phase) => {
                       const delivery = selectedProject.deliveries?.find((d) => d.deliveryNumber === phase);
                       const isCurrent = (selectedProject.expectedDeliveryNumber || 1) === phase && !delivery;
                       const isCompleted = delivery?.status === 'approved';
@@ -1141,7 +1416,7 @@ export default function ProjectsPage({ user }) {
                                 : 'bg-gray-50 border-gray-200'
                           } ${expired ? 'opacity-60' : ''}`}
                         >
-                          <p className="text-xs text-gray-500">Entrega {phase}</p>
+                          <p className="text-xs text-gray-500">{getPhaseLabel(phase)}</p>
                           <p className="text-sm font-semibold">{delivery ? delivery.title : 'Sin registro'}</p>
                           <p className="text-xs text-gray-500">
                             {delivery?.submittedAt ? format(new Date(delivery.submittedAt), 'dd/MM/yyyy') : 'Pendiente'}

@@ -397,13 +397,14 @@ async function importExcel(filePath, options = {}) {
   return { success: true, results };
 }
 
-async function recordImportHistory(filePath, results) {
+async function recordImportHistory(filePath, results, type = 'projects') {
   try {
     const db = DatabaseConnection.getInstance();
     const importsDb = db.getDatabase('imports');
     if (!importsDb) return;
 
     const record = {
+      type,
       fileName: path.basename(filePath || ''),
       importedAt: new Date(),
       summary: {
@@ -427,7 +428,7 @@ async function recordImportHistory(filePath, results) {
 
 module.exports = async function(filePath, options = {}) {
   const res = await importExcel(filePath, options);
-  await recordImportHistory(filePath, res.results || { createdProjects: 0, createdDeliveries: 0, errors: [] });
+  await recordImportHistory(filePath, res.results || { createdProjects: 0, createdDeliveries: 0, errors: [] }, options.type || 'projects');
   return res;
 };
 

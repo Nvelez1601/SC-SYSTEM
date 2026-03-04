@@ -8,7 +8,7 @@ export default function DashboardLayout({ user, title = '', links = [], onLogout
   const closeMenu = () => setIsMenuOpen(false);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-white">
+    <div className="h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50 to-white">
       <header className="flex items-center justify-between bg-white/80 backdrop-blur shadow-sm px-4 py-3 sm:hidden">
         <div>
           <div className="flex items-center gap-2">
@@ -33,7 +33,7 @@ export default function DashboardLayout({ user, title = '', links = [], onLogout
         </button>
       </header>
 
-      <div className="flex flex-col sm:flex-row min-h-[calc(100vh-56px)] sm:min-h-screen">
+      <div className="flex flex-col sm:flex-row h-[calc(100vh-56px)] sm:h-full">
         <aside
           className={`bg-white/90 backdrop-blur shadow-sm sm:w-72 sm:flex-shrink-0 ${isMenuOpen ? 'block' : 'hidden'} sm:block`}
         >
@@ -75,7 +75,7 @@ export default function DashboardLayout({ user, title = '', links = [], onLogout
           </div>
         </aside>
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <main className="flex-1 h-full overflow-y-auto p-4 sm:p-6">
           {/* If callers passed children (Routes JSX) render them, otherwise fall back to Outlet */}
           {children ? children : <Outlet />}
         </main>

@@ -1,4 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+
+const MIN_VENEZUELAN_ID_LENGTH = 6;
+const MAX_VENEZUELAN_ID_LENGTH = 9;
+
+const isValidVenezuelanId = (value) => {
+  if (!value) return false;
+  const cedula = String(value).trim();
+  if (!cedula) return false;
+  if (!/^\d+$/.test(cedula)) return false;
+  if (cedula.length < MIN_VENEZUELAN_ID_LENGTH || cedula.length > MAX_VENEZUELAN_ID_LENGTH) return false;
+  if (/^0+$/.test(cedula)) return false;
+  return true;
+};
+
+const onlyDigits = (value) => (value ? String(value).replace(/\D/g, '') : '');
 
 function ExoneradoPage() {
   const [formData, setFormData] = useState({
@@ -18,6 +33,15 @@ function ExoneradoPage() {
   const [exonerados, setExonerados] = useState([]);
   const [editando, setEditando] = useState(false);
   const [editId, setEditId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showImport, setShowImport] = useState(false);
+  const [importFilePath, setImportFilePath] = useState('');
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [importError, setImportError] = useState('');
+  const [importHistory, setImportHistory] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
 
   const api = window.electronAPI || {};
 
@@ -36,12 +60,69 @@ function ExoneradoPage() {
     loadExonerados();
   }, []);
 
+  const filteredExonerados = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return exonerados;
+    return exonerados.filter((item) => [
+      item.code,
+      item.apellido,
+      item.nombre,
+      item.cedula,
+      item.universidadTsu,
+      item.razonExoneracion,
+      item.proyectoTitulo,
+      item.proyectoCodigo,
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(term))
+    );
+  }, [exonerados, searchTerm]);
+
+  const totalPages = useMemo(() => {
+    const pages = Math.ceil(filteredExonerados.length / itemsPerPage);
+    return pages > 0 ? pages : 1;
+  }, [filteredExonerados.length, itemsPerPage]);
+
+  const paginatedExonerados = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredExonerados.slice(start, start + itemsPerPage);
+  }, [filteredExonerados, currentPage, itemsPerPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const buildPageItems = (total, current) => {
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    const pages = [1];
+    if (current > 3) pages.push('...');
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+    for (let i = start; i <= end; i += 1) pages.push(i);
+    if (current < total - 2) pages.push('...');
+    pages.push(total);
+    return pages;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     // Validación básica
     if (!formData.apellido || !formData.nombre || !formData.cedula) {
       alert('Por favor complete los campos obligatorios (*)');
+      return;
+    }
+
+    if (!isValidVenezuelanId(formData.cedula)) {
+      alert('La cédula debe ser numérica, con entre 6 y 9 dígitos y no puede ser solo ceros.');
       return;
     }
 
@@ -88,9 +169,14 @@ function ExoneradoPage() {
   };
 
   const handleChange = (e) => {
+    const { name, value } = e.target;
+    let nextValue = value;
+    if (name === 'cedula') {
+      nextValue = onlyDigits(value);
+    }
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [name]: nextValue,
     });
   };
 
@@ -150,11 +236,69 @@ function ExoneradoPage() {
     URL.revokeObjectURL(url);
   };
 
+  const loadImportHistory = async () => {
+    if (!api.getImportHistory) return;
+    try {
+      const res = await api.getImportHistory('exonerados');
+      const imports = res?.success ? res.imports ?? [] : [];
+      const filtered = imports.filter((item) => item && item.summary && typeof item.summary.created === 'number');
+      setImportHistory(filtered);
+    } catch (error) {
+      console.error('Error al cargar historial de importaciones:', error);
+      setImportHistory([]);
+    }
+  };
+
+  const handleImportFileChange = (e) => {
+    setImportResult(null);
+    setImportError('');
+    const file = e.target.files && e.target.files[0];
+    setImportFilePath(file ? file.path || '' : '');
+  };
+
+  const handleImport = async () => {
+    if (!api.importExonerados) {
+      setImportError('La importacion no esta disponible en esta version.');
+      return;
+    }
+    if (!importFilePath) {
+      setImportError('Selecciona un archivo antes de importar');
+      return;
+    }
+
+    try {
+      setImportLoading(true);
+      setImportError('');
+      const res = await api.importExonerados(importFilePath);
+      setImportResult(res);
+      await loadImportHistory();
+      await loadExonerados();
+    } catch (error) {
+      setImportError(error?.message || 'Error al importar el archivo');
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleClearImportHistory = async () => {
+    if (!confirm('Eliminar todo el historial de importaciones?')) return;
+    try {
+      await api.clearImportHistory('exonerados');
+      await loadImportHistory();
+    } catch (error) {
+      console.error('Error al limpiar historial de importaciones:', error);
+    }
+  };
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-2xl p-6 text-white shadow-lg mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold">Registro de Exonerados</h1>
-        <p className="text-blue-100 mt-2">Registro de estudiantes exonerados del servicio comunitario</p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold">Registro de Exonerados</h1>
+            <p className="text-blue-100 mt-2">Registro de estudiantes exonerados del servicio comunitario</p>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -370,20 +514,39 @@ function ExoneradoPage() {
         </div>
 
         <div className="bg-white rounded-xl shadow-lg border border-blue-100 p-6">
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
             <h2 className="text-xl font-bold text-slate-800">Registros Guardados</h2>
-            <button
-              onClick={exportarCSV}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm"
-              disabled={exonerados.length === 0}
-            >
-              Exportar CSV
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <input
+                type="text"
+                className="w-full sm:w-64 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Buscar exonerado"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setShowImport(true);
+                  loadImportHistory();
+                }}
+                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition text-sm"
+              >
+                Importar
+              </button>
+              <button
+                onClick={exportarCSV}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm"
+                disabled={exonerados.length === 0}
+              >
+                Exportar CSV
+              </button>
+            </div>
           </div>
 
-          {exonerados.length === 0 ? (
+          {filteredExonerados.length === 0 ? (
             <div className="text-center py-8 text-slate-500">
-              <p>No hay registros guardados</p>
+              <p>No hay registros para el filtro actual</p>
               <p className="text-sm mt-1">Comience agregando un nuevo exonerado</p>
             </div>
           ) : (
@@ -401,7 +564,7 @@ function ExoneradoPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {exonerados.map((item, index) => (
+                  {paginatedExonerados.map((item) => (
                     <tr key={item._id} className="border-b hover:bg-blue-50">
                       <td className="py-2 px-3 font-mono text-xs">{item.code}</td>
                       <td className="py-2 px-3">{item.apellido}, {item.nombre}</td>
@@ -430,43 +593,130 @@ function ExoneradoPage() {
                 </tbody>
               </table>
               <div className="mt-3 text-sm text-slate-600">
-                Total: {exonerados.length} registro(s)
+                Total: {filteredExonerados.length} registro(s) • Pagina {currentPage} de {totalPages}
               </div>
+              {totalPages > 1 && (
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                    className="px-3 py-1 border rounded"
+                    disabled={currentPage === 1}
+                  >
+                    Anterior
+                  </button>
+                  {buildPageItems(totalPages, currentPage).map((page, index) =>
+                    page === '...'
+                      ? (
+                        <span key={`ellipsis-${index}`} className="px-2 text-slate-500">...</span>
+                      )
+                      : (
+                        <button
+                          key={page}
+                          type="button"
+                          onClick={() => setCurrentPage(page)}
+                          className={`px-3 py-1 rounded ${page === currentPage ? 'bg-blue-600 text-white' : 'border'}`}
+                        >
+                          {page}
+                        </button>
+                      )
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                    className="px-3 py-1 border rounded"
+                    disabled={currentPage === totalPages}
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-lg border border-blue-100 shadow">
-          <p className="text-sm text-blue-600">Total Registros</p>
-          <p className="text-2xl font-bold">{exonerados.length}</p>
+      {showImport && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 px-3">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-semibold">Importar exonerados</h3>
+              <button
+                type="button"
+                onClick={() => setShowImport(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ×
+              </button>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <p className="text-sm text-slate-600 mb-2">Selecciona el archivo Excel o CSV con los registros de exonerados.</p>
+              <input type="file" accept=".xlsx,.xls,.csv" onChange={handleImportFileChange} className="mb-3" />
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleImport}
+                  disabled={importLoading}
+                  className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  {importLoading ? 'Importando...' : 'Importar'}
+                </button>
+                <div className="text-xs text-slate-500 break-all">{importFilePath}</div>
+              </div>
+              {importError && <div className="mt-3 text-red-600 text-sm">{importError}</div>}
+            </div>
+
+            {importResult && (
+              <div className="bg-green-50 border border-green-100 rounded-xl p-4 text-sm text-green-800">
+                Importacion completa: {importResult?.results?.created || 0} registros, {importResult?.results?.errors?.length || 0} errores.
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-slate-700">Historial de importaciones</h4>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={loadImportHistory}
+                    className="px-3 py-1 text-xs border rounded"
+                  >
+                    Refrescar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearImportHistory}
+                    className="px-3 py-1 text-xs bg-red-600 text-white rounded"
+                  >
+                    Limpiar
+                  </button>
+                </div>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-xl p-4">
+                {importHistory.length === 0 ? (
+                  <p className="text-xs text-slate-500">No hay importaciones registradas.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {importHistory.map((item) => (
+                      <li key={item._id} className="text-xs text-slate-600 flex items-center justify-between">
+                        <div>
+                          <div className="font-medium text-slate-700">{item.fileName || 'Archivo sin nombre'}</div>
+                          <div>{new Date(item.importedAt).toLocaleString()}</div>
+                        </div>
+                        <div>
+                          {item.summary
+                            ? `${item.summary.created ?? item.summary.createdProjects ?? 0} registros • ${item.summary.errors || 0} errores`
+                            : ''}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="bg-white p-4 rounded-lg border border-blue-100 shadow">
-          <p className="text-sm text-blue-600">Último Registro</p>
-          <p className="text-lg font-semibold">
-            {exonerados.length > 0 ? 
-              new Date(exonerados[exonerados.length-1].createdAt).toLocaleDateString() : 
-              'N/A'}
-          </p>
-        </div>
-        <div className="bg-white p-4 rounded-lg border border-blue-100 shadow">
-          <p className="text-sm text-blue-600">Por Título</p>
-          <p className="text-lg font-semibold">
-            {[...new Set(exonerados.map(item => item.titulo))].filter(Boolean).length} tipos
-          </p>
-        </div>
-        <div className="bg-white p-4 rounded-lg border border-blue-100 shadow">
-          <p className="text-sm text-blue-600">Exportar</p>
-          <button
-            onClick={exportarCSV}
-            className="mt-1 px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
-            disabled={exonerados.length === 0}
-          >
-            Descargar CSV
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

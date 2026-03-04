@@ -36,9 +36,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   generateReport: (reportType, filters) => ipcRenderer.invoke('report:generate', reportType, filters),
   // Import Excel
   importExcel: (filePath) => ipcRenderer.invoke('project:importExcel', filePath),
+  importExonerados: (filePath) => ipcRenderer.invoke('exonerado:importExcel', filePath),
   // Import history
-  getImportHistory: () => ipcRenderer.invoke('project:getImportHistory'),
-  clearImportHistory: () => ipcRenderer.invoke('project:clearImportHistory'),
+  getImportHistory: (type) => ipcRenderer.invoke('project:getImportHistory', type),
+  clearImportHistory: (type) => ipcRenderer.invoke('project:clearImportHistory', type),
   // Exonerados
   getExonerados: () => ipcRenderer.invoke('exonerado:getAll'),
   createExonerado: (data) => ipcRenderer.invoke('exonerado:create', data),

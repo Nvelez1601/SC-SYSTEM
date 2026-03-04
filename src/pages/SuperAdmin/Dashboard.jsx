@@ -22,7 +22,6 @@ function Dashboard({ user, onLogout }) {
   const links = [
     { to: '', label: 'Panel' },
     { to: 'projects', label: 'Proyectos' },
-    { to: 'projects/import', label: 'Importar' },
     { to: 'users', label: 'Gestión de usuarios' },
     { to: 'exonerado', label: 'Exonerado' },
   ];
@@ -48,6 +47,7 @@ function Dashboard({ user, onLogout }) {
 function DashboardHome({ user }) {
   const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [exonerados, setExonerados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [exportFrom, setExportFrom] = useState('');
   const [exportTo, setExportTo] = useState('');
@@ -65,10 +65,13 @@ function DashboardHome({ user }) {
       ]);
       setUsers(usersRes?.users || []);
       setProjects(projectsRes?.projects || []);
+      const exoneradosRes = await window.electronAPI.getExonerados?.();
+      setExonerados(exoneradosRes?.exonerados || []);
     } catch (error) {
       console.error('Error loading stats:', error);
       setUsers([]);
       setProjects([]);
+      setExonerados([]);
     } finally {
       setLoading(false);
     }
@@ -120,6 +123,14 @@ function DashboardHome({ user }) {
     const pending = deliveries.filter((delivery) => !['approved', 'rejected'].includes(delivery.status)).length;
     return { total, approved, rejected, pending };
   }, [deliveries]);
+
+  const exoneradoStats = useMemo(() => {
+    const total = exonerados.length;
+    const last = exonerados.length > 0 ? exonerados[exonerados.length - 1] : null;
+    const lastDate = last?.createdAt ? new Date(last.createdAt).toLocaleDateString() : 'N/A';
+    const titleTypes = new Set(exonerados.map((item) => item.titulo).filter(Boolean));
+    return { total, lastDate, titleTypes: titleTypes.size };
+  }, [exonerados]);
 
   const agentStats = useMemo(() => {
     const statsMap = new Map();
@@ -334,6 +345,14 @@ function DashboardHome({ user }) {
         <StatCard title="Rechazadas" value={deliveryStats.rejected} />
         <StatCard title="Pendientes" value={deliveryStats.pending} />
       </div>
+
+      <SectionCard title="Exonerados" subtitle="Resumen del registro de exonerados.">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard title="Total registros" value={exoneradoStats.total} />
+          <StatCard title="Ultimo registro" value={exoneradoStats.lastDate} />
+          <StatCard title="Titulos" value={exoneradoStats.titleTypes} />
+        </div>
+      </SectionCard>
 
       <SectionCard title="Exportar proyectos (CSV)" subtitle="Filtra por fecha de creación del proyecto.">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">

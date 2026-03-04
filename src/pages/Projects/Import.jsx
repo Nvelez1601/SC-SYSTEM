@@ -40,7 +40,7 @@ export default function ImportPage() {
 
   const loadHistory = async () => {
     try {
-      const res = await window.electronAPI.getImportHistory();
+      const res = await window.electronAPI.getImportHistory('projects');
       if (res && res.success) setHistory(res.imports || []);
       else setHistory([]);
     } catch (err) {
@@ -52,7 +52,7 @@ export default function ImportPage() {
   const handleClearHistory = async () => {
     if (!confirm('Eliminar todo el historial de importaciones?')) return;
     try {
-      await window.electronAPI.clearImportHistory();
+      await window.electronAPI.clearImportHistory('projects');
       await loadHistory();
     } catch (err) {
       console.error('Failed to clear history', err);

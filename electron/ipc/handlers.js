@@ -5,6 +5,7 @@ const ExoneradoController = require('../controllers/ExoneradoController');
 const EmailService = require('../core/services/EmailService');
 const DatabaseConnection = require('../database/connection');
 const importExcel = require('../scripts/importExcel');
+const importExonerados = require('../scripts/importExonerados');
 
 let userController;
 let deliveryController;
@@ -199,6 +200,18 @@ function setupIpcHandlers(ipcMain) {
     }
   });
 
+  ipcMain.handle('exonerado:importExcel', async (event, filePath) => {
+    console.log('[IPC] exonerado:importExcel called', { filePath });
+    try {
+      const res = await importExonerados(filePath, { type: 'exonerados' });
+      console.log('[IPC] exonerado:importExcel result', { created: res && res.results && res.results.created });
+      return res;
+    } catch (err) {
+      console.error('[IPC] exonerado:importExcel error', err);
+      return { success: false, error: err.message };
+    }
+  });
+
   ipcMain.handle('exonerado:create', async (event, data) => {
     try {
       const res = await exoneradoController.create(data || {});
@@ -268,7 +281,7 @@ function setupIpcHandlers(ipcMain) {
       const requestedBy = currentUser && (currentUser.firstName || currentUser.lastName)
         ? [currentUser.firstName, currentUser.lastName].filter(Boolean).join(' ').trim()
         : (currentUser && currentUser.username) || 'desconocido';
-      const res = await importExcel(filePath, { requestedBy });
+      const res = await importExcel(filePath, { requestedBy, type: 'projects' });
       console.log('[IPC] project:importExcel result', { createdProjects: res && res.results && res.results.createdProjects, createdDeliveries: res && res.results && res.results.createdDeliveries });
       return res;
     } catch (err) {
@@ -277,14 +290,14 @@ function setupIpcHandlers(ipcMain) {
     }
   });
 
-  ipcMain.handle('project:getImportHistory', async () => {
+  ipcMain.handle('project:getImportHistory', async (event, type = 'projects') => {
     try {
       const db = DatabaseConnection.getInstance();
       const importsDb = db.getDatabase('imports');
       if (!importsDb) return { success: true, imports: [] };
 
       return new Promise((resolve) => {
-        importsDb.find({}).sort({ importedAt: -1 }).exec((err, docs) => {
+        importsDb.find({ type }).sort({ importedAt: -1 }).exec((err, docs) => {
           if (err) resolve({ success: false, error: err.message });
           else resolve({ success: true, imports: docs || [] });
         });
@@ -295,14 +308,14 @@ function setupIpcHandlers(ipcMain) {
     }
   });
 
-  ipcMain.handle('project:clearImportHistory', async () => {
+  ipcMain.handle('project:clearImportHistory', async (event, type = 'projects') => {
     try {
       const db = DatabaseConnection.getInstance();
       const importsDb = db.getDatabase('imports');
       if (!importsDb) return { success: true };
 
       return new Promise((resolve, reject) => {
-        importsDb.remove({}, { multi: true }, (err, numRemoved) => {
+        importsDb.remove({ type }, { multi: true }, (err, numRemoved) => {
           if (err) resolve({ success: false, error: err.message });
           else resolve({ success: true, removed: numRemoved });
         });

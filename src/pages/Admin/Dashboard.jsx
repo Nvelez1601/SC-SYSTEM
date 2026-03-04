@@ -25,7 +25,6 @@ function Dashboard({ user, onLogout }) {
   const links = [
     { to: '', label: 'Panel' },
     { to: 'projects', label: 'Proyectos' },
-    { to: 'projects/import', label: 'Importar' },
   ];
 
   const logoutHandler = () => {
