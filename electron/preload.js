@@ -47,6 +47,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteExonerado: (id) => ipcRenderer.invoke('exonerado:delete', id),
 });
 
+// Expose a stable `dragEvent` binding in the renderer world for legacy bundles
+try {
+  contextBridge.exposeInMainWorld('dragEvent', null);
+} catch (e) {
+  // ignore if not possible
+}
+
 // Forward uncaught renderer errors to main process for easier debugging
 try {
   // Ensure `dragEvent` exists globally to avoid ReferenceError from bundled code
