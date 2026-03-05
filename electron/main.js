@@ -44,9 +44,34 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
     // Allow opening DevTools in production for debugging when explicitly requested
     if (process.env.OPEN_DEVTOOLS === '1' || process.env.DEBUG_ELECTRON === '1') {
-      mainWindow.webContents.openDevTools();
+      // open in detached mode so it's visible on Windows builds
+      try {
+        mainWindow.webContents.openDevTools({ mode: 'detach' });
+      } catch (e) {
+        mainWindow.webContents.openDevTools();
+      }
     }
   }
+
+  // Forward renderer console messages and load failures to the main process stdout
+  const wc = mainWindow.webContents;
+  wc.on('did-finish-load', () => {
+    console.log('[renderer] did-finish-load, URL=', wc.getURL());
+  });
+
+  wc.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error('[renderer] did-fail-load', { errorCode, errorDescription, validatedURL });
+  });
+
+  // Capture console messages from the renderer and print them to main logs
+  wc.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[renderer][console:${level}] ${message} (${sourceId}:${line})`);
+  });
+
+  // Detect renderer process crashes or unexpected exits
+  wc.on('render-process-gone', (event, details) => {
+    console.error('[renderer] render-process-gone', details);
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
