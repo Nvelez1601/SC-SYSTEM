@@ -31,6 +31,13 @@
                   console.log('[debug] #root childCount changed', last, '=>', root.childElementCount);
                   try{
                     const snap = root.innerHTML || '';
+                    // send snapshot to main process if available (preload exposes electronAPI.sendDebugSnapshot)
+                    try{
+                      if(window.electronAPI && typeof window.electronAPI.sendDebugSnapshot === 'function'){
+                        window.electronAPI.sendDebugSnapshot(snap);
+                        console.log('[debug] sent snapshot to main');
+                      }
+                    }catch(e){ /* ignore send errors */ }
                     console.log('[debug] #root snapshot (first 2000 chars):', snap.slice(0,2000));
                     lastSnapshot = snap;
                   }catch(e){ console.error('[debug] error reading innerHTML', e && e.stack || e); }
@@ -45,7 +52,11 @@
                 if(!root) return;
                 if(root.childElementCount !== last){
                   console.log('[debug] #root childCount now', root.childElementCount);
-                  try{ console.log('[debug] #root snapshot (first 2000 chars):', (root.innerHTML||'').slice(0,2000)); }catch(e){}
+                  try{
+                    const snap = root.innerHTML || '';
+                    try{ if(window.electronAPI && typeof window.electronAPI.sendDebugSnapshot === 'function'){ window.electronAPI.sendDebugSnapshot(snap); console.log('[debug] sent snapshot to main'); } }catch(e){}
+                    console.log('[debug] #root snapshot (first 2000 chars):', snap.slice(0,2000));
+                  }catch(e){}
                   last = root.childElementCount;
                 }
               }catch(e){ console.error('[debug] interval error', e && e.stack || e); }

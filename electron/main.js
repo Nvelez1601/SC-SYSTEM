@@ -73,6 +73,18 @@ function createWindow() {
     try {
       const snippet = typeof html === 'string' ? html.slice(0, 2000) : String(html);
       console.log('[renderer][snapshot] ', snippet.replace(/\s+/g, ' ').trim());
+      try {
+        const fs = require('fs');
+        const os = require('os');
+        const dir = path.join(app.getPath('userData'), 'debug-snapshots');
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        const name = `snapshot-${Date.now()}.html`;
+        const filePath = path.join(dir, name);
+        fs.writeFileSync(filePath, String(html), { encoding: 'utf8' });
+        console.log('[renderer][snapshot] saved to', filePath);
+      } catch (e) {
+        console.error('[renderer][snapshot] failed to save snapshot', e && e.message);
+      }
     } catch (e) {
       console.error('[renderer][snapshot] failed to log snapshot', e && e.message);
     }
