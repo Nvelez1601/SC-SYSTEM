@@ -49,6 +49,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
 // Forward uncaught renderer errors to main process for easier debugging
 try {
+  // Ensure `dragEvent` exists globally to avoid ReferenceError from bundled code
+  try {
+    // define as undefined so references don't throw
+    window.dragEvent = window.dragEvent === undefined ? undefined : window.dragEvent;
+  } catch (e) {
+    // ignore if unable to set
+  }
   // This runs in the preload context and can capture global errors in renderer
   window.addEventListener('error', (evt) => {
     try {
