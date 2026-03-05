@@ -1,8 +1,21 @@
 const path = require('path');
 
+// Prefer an explicit environment override, otherwise use Electron's userData when available,
+// falling back to the repository `data/` folder. This makes the app portable and keeps
+// per-user data when installed.
+let defaultDataPath = path.join(__dirname, '../../data');
+try {
+  const { app } = require('electron');
+  if (app && app.getPath) {
+    defaultDataPath = app.getPath('userData');
+  }
+} catch (e) {
+  // Not running inside Electron main process (e.g., during static analysis or tests)
+}
+
 const config = {
   database: {
-    path: path.join(__dirname, '../../data'),
+    path: process.env.USM_DATA_PATH || defaultDataPath,
     users: 'users.db',
     projects: 'projects.db',
     deliveries: 'deliveries.db',
