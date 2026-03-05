@@ -3,6 +3,9 @@ const path = require('path');
 // Prefer an explicit environment override, otherwise use Electron's userData when available,
 // falling back to the repository `data/` folder. This makes the app portable and keeps
 // per-user data when installed.
+const fs = require('fs');
+const os = require('os');
+
 let defaultDataPath = path.join(__dirname, '../../data');
 try {
   const { app } = require('electron');
@@ -13,9 +16,27 @@ try {
   // Not running inside Electron main process (e.g., during static analysis or tests)
 }
 
+// If the resolved default path exists but is a file (not a directory), pick a safe fallback.
+const resolveSafeDataPath = (p) => {
+  try {
+    if (fs.existsSync(p)) {
+      const stat = fs.lstatSync(p);
+      if (!stat.isDirectory()) {
+        // choose a fallback inside the OS user home directory
+        return path.join(os.homedir(), 'USM-CST-data');
+      }
+    }
+  } catch (e) {
+    // swallow and return original
+  }
+  return p;
+};
+
+defaultDataPath = resolveSafeDataPath(defaultDataPath);
+
 const config = {
   database: {
-    path: process.env.USM_DATA_PATH || defaultDataPath,
+    path: resolveSafeDataPath(process.env.USM_DATA_PATH || defaultDataPath),
     users: 'users.db',
     projects: 'projects.db',
     deliveries: 'deliveries.db',
