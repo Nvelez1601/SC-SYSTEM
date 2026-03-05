@@ -42,6 +42,10 @@ function createWindow() {
     }
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    // Allow opening DevTools in production for debugging when explicitly requested
+    if (process.env.OPEN_DEVTOOLS === '1' || process.env.DEBUG_ELECTRON === '1') {
+      mainWindow.webContents.openDevTools();
+    }
   }
 
   mainWindow.on('closed', () => {
