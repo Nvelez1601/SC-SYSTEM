@@ -1,4 +1,74 @@
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+/* Local font loading: replace the files in /public/fonts/ with real .woff2 files
+   Expected filenames:
+     /public/fonts/Sora-300.woff2
+     /public/fonts/Sora-400.woff2
+     /public/fonts/Sora-500.woff2
+     /public/fonts/Sora-600.woff2
+     /public/fonts/Sora-700.woff2
+     /public/fonts/SpaceGrotesk-500.woff2
+     /public/fonts/SpaceGrotesk-600.woff2
+     /public/fonts/SpaceGrotesk-700.woff2
+
+   If you prefer variable fonts, point `src` to the variable .woff2 and adjust weights.
+*/
+
+@font-face {
+  font-family: 'Sora';
+  src: url('/fonts/Sora-300.woff2') format('woff2');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Sora';
+  src: url('/fonts/Sora-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Sora';
+  src: url('/fonts/Sora-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Sora';
+  src: url('/fonts/Sora-600.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Sora';
+  src: url('/fonts/Sora-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('/fonts/SpaceGrotesk-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('/fonts/SpaceGrotesk-600.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('/fonts/SpaceGrotesk-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
 
 @tailwind base;
 @tailwind components;
