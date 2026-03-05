@@ -45,6 +45,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createExonerado: (data) => ipcRenderer.invoke('exonerado:create', data),
   updateExonerado: (id, data) => ipcRenderer.invoke('exonerado:update', id, data),
   deleteExonerado: (id) => ipcRenderer.invoke('exonerado:delete', id),
+  // Debug: allow renderer to send HTML snapshots to main for debugging
+  sendDebugSnapshot: (html) => {
+    try { ipcRenderer.send('renderer:debugSnapshot', String(html)); } catch (e) { /* ignore */ }
+  },
 });
 
 // Expose a stable `dragEvent` binding in the renderer world for legacy bundles

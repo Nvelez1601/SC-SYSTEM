@@ -68,6 +68,16 @@ function createWindow() {
     console.log(`[renderer][console:${level}] ${message} (${sourceId}:${line})`);
   });
 
+  // Allow renderer to send debug snapshots (HTML) to main process for inspection
+  ipcMain.on('renderer:debugSnapshot', (evt, html) => {
+    try {
+      const snippet = typeof html === 'string' ? html.slice(0, 2000) : String(html);
+      console.log('[renderer][snapshot] ', snippet.replace(/\s+/g, ' ').trim());
+    } catch (e) {
+      console.error('[renderer][snapshot] failed to log snapshot', e && e.message);
+    }
+  });
+
   // Detect renderer process crashes or unexpected exits
   wc.on('render-process-gone', (event, details) => {
     console.error('[renderer] render-process-gone', details);

@@ -20,14 +20,35 @@
           console.log('[debug] #root found=', !!root);
           console.log('[debug] #root innerHTML length=', root ? root.innerHTML.length : 'no-root');
           if(root){
-            const obs = new MutationObserver(()=>{
-              console.log('[debug] #root childCount=', root.childElementCount);
+            let last = root.childElementCount;
+            let lastSnapshot = root.innerHTML;
+            const obs = new MutationObserver((muts)=>{
+              try{
+                console.log('[debug] #root mutations, childCount=', root.childElementCount);
+                console.log('[debug] mutationRecords=', muts.map(m=>({type:m.type, added:m.addedNodes?.length||0, removed:m.removedNodes?.length||0})));
+                // If children changed, dump a small snapshot of innerHTML
+                if(root.childElementCount !== last){
+                  console.log('[debug] #root childCount changed', last, '=>', root.childElementCount);
+                  try{
+                    const snap = root.innerHTML || '';
+                    console.log('[debug] #root snapshot (first 2000 chars):', snap.slice(0,2000));
+                    lastSnapshot = snap;
+                  }catch(e){ console.error('[debug] error reading innerHTML', e && e.stack || e); }
+                  last = root.childElementCount;
+                }
+              }catch(inner){ console.error('[debug] mutation observer error', inner && inner.stack || inner); }
             });
             obs.observe(root, { childList: true, subtree: true });
-            let last = root.childElementCount;
+            // Periodic check as fallback
             setInterval(()=>{
-              if(!root) return;
-              if(root.childElementCount !== last){ last = root.childElementCount; console.log('[debug] #root childCount now', last); }
+              try{
+                if(!root) return;
+                if(root.childElementCount !== last){
+                  console.log('[debug] #root childCount now', root.childElementCount);
+                  try{ console.log('[debug] #root snapshot (first 2000 chars):', (root.innerHTML||'').slice(0,2000)); }catch(e){}
+                  last = root.childElementCount;
+                }
+              }catch(e){ console.error('[debug] interval error', e && e.stack || e); }
             }, 500);
           }
         }catch(e){ console.error('[debug] error checking root', e && e.stack || e); }
