@@ -10,6 +10,31 @@
   <body>
     <div id="root"></div>
     <script>var dragEvent = null;</script>
+    <!-- DEBUG BANNER + ROOT WATCHER: included in production build to aid diagnosing blank renderer -->
+    <div id="__debug_banner" style="position:fixed;left:8px;top:8px;z-index:99999;padding:6px 10px;background:rgba(255,0,0,0.06);color:#900;border-radius:6px;font-family:monospace;">DEBUG: index source</div>
+    <script>
+      (function(){
+        console.log('[debug] document.readyState=', document.readyState);
+        try{
+          const root = document.getElementById('root');
+          console.log('[debug] #root found=', !!root);
+          console.log('[debug] #root innerHTML length=', root ? root.innerHTML.length : 'no-root');
+          if(root){
+            const obs = new MutationObserver(()=>{
+              console.log('[debug] #root childCount=', root.childElementCount);
+            });
+            obs.observe(root, { childList: true, subtree: true });
+            let last = root.childElementCount;
+            setInterval(()=>{
+              if(!root) return;
+              if(root.childElementCount !== last){ last = root.childElementCount; console.log('[debug] #root childCount now', last); }
+            }, 500);
+          }
+        }catch(e){ console.error('[debug] error checking root', e && e.stack || e); }
+        window.addEventListener('error', (ev)=>{ console.error('[debug][window.error]', ev && ev.error ? ev.error.stack || ev.error.message : ev.message); });
+        window.addEventListener('unhandledrejection', (ev)=>{ console.error('[debug][unhandledrejection]', ev.reason && (ev.reason.stack || ev.reason.message) || ev.reason); });
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

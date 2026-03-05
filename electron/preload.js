@@ -59,7 +59,17 @@ try {
   // Ensure `dragEvent` exists globally to avoid ReferenceError from bundled code
   try {
     // define as undefined so references don't throw
-    window.dragEvent = window.dragEvent === undefined ? undefined : window.dragEvent;
+    // Also inject a small inline script into the page context that declares
+    // a real global `var dragEvent = null;` so legacy bundles that reference
+    // the free identifier won't throw ReferenceError.
+    try {
+      const script = document.createElement('script');
+      script.textContent = 'var dragEvent = null;';
+      (document.head || document.documentElement).prepend(script);
+    } catch (e2) {
+      // fallback to setting property on window (may not create a free identifier)
+      window.dragEvent = window.dragEvent === undefined ? undefined : window.dragEvent;
+    }
   } catch (e) {
     // ignore if unable to set
   }
