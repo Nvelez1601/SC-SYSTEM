@@ -46,3 +46,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateExonerado: (id, data) => ipcRenderer.invoke('exonerado:update', id, data),
   deleteExonerado: (id) => ipcRenderer.invoke('exonerado:delete', id),
 });
+
+// Forward uncaught renderer errors to main process for easier debugging
+try {
+  // This runs in the preload context and can capture global errors in renderer
+  window.addEventListener('error', (evt) => {
+    try {
+      const payload = { message: evt.message, filename: evt.filename, lineno: evt.lineno, colno: evt.colno, error: (evt.error && evt.error.stack) || null };
+      ipcRenderer.send('renderer:error', payload);
+    } catch (e) {
+      /* ignore */
+    }
+  });
+
+  window.addEventListener('unhandledrejection', (evt) => {
+    try {
+      const reason = evt.reason && (evt.reason.stack || evt.reason.message) ? (evt.reason.stack || evt.reason.message) : String(evt.reason);
+      ipcRenderer.send('renderer:error', { message: 'unhandledrejection', reason });
+    } catch (e) {
+      /* ignore */
+    }
+  });
+} catch (e) {
+  // preload may run in restricted contexts; fail silently
+}

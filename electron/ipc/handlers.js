@@ -393,6 +393,15 @@ function setupIpcHandlers(ipcMain) {
   });
 
   console.log('IPC handlers registered successfully');
+
+  // Listen for forwarded renderer errors (from preload) to aid debugging
+  try {
+    ipcMain.on('renderer:error', (evt, payload) => {
+      console.error('[renderer][forwarded-error]', payload);
+    });
+  } catch (e) {
+    console.warn('[IPC] unable to register renderer:error listener', e && e.message);
+  }
 }
 
 module.exports = setupIpcHandlers;
